@@ -6,7 +6,11 @@ dist/
 wheels/
 *.egg-info
 transformed/
-.claude/
+
+# Claude Code config (ignore most, but track program state)
+.claude/*
+!.claude/program.yaml
+!.claude/skills/
 
 
 # Virtual environments

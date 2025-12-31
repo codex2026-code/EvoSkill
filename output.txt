@@ -1,4 +1,28 @@
 
 [INIT] Created base program
   → Evaluating on 5 samples...
-Evaluating:   0%|          | 0/5 [00:00<?, ?it/s]Evaluating:  20%|██        | 1/5 [5:47:53<23:11:32, 20873.18s/it]Evaluating:  40%|████      | 2/5 [6:22:12<8:10:18, 9806.25s/it]  Evaluating:  60%|██████    | 3/5 [12:04:58<8:10:38, 14719.40s/it]
+Evaluating:   0%|          | 0/5 [00:00<?, ?it/s]Evaluating:  20%|██        | 1/5 [01:22<05:31, 82.88s/it]Evaluating:  40%|████      | 2/5 [01:47<02:25, 48.34s/it]Evaluating:  60%|██████    | 3/5 [03:01<02:00, 60.13s/it]Evaluating:  80%|████████  | 4/5 [07:03<02:12, 132.17s/it]Evaluating: 100%|██████████| 5/5 [08:58<00:00, 125.84s/it]Evaluating: 100%|██████████| 5/5 [08:58<00:00, 107.68s/it]
+Traceback (most recent call last):
+  File "/Users/salahalzubi/cursor_projects/deep_agents/scripts/run_loop.py", line 60, in <module>
+    asyncio.run(main())
+  File "/Users/salahalzubi/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/Users/salahalzubi/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/salahalzubi/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/Users/salahalzubi/cursor_projects/deep_agents/scripts/run_loop.py", line 53, in main
+    result = await loop.run()
+             ^^^^^^^^^^^^^^^^
+  File "/Users/salahalzubi/cursor_projects/deep_agents/src/loop/runner.py", line 143, in run
+    await self._ensure_base_program()
+  File "/Users/salahalzubi/cursor_projects/deep_agents/src/loop/runner.py", line 247, in _ensure_base_program
+    base_score = await self._evaluate(self.val_data)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/salahalzubi/cursor_projects/deep_agents/src/loop/runner.py", line 270, in _evaluate
+    result.trace.output.final_answer,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'final_answer'

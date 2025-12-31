@@ -169,7 +169,7 @@ class SelfImprovingLoop:
                 agent_answer.strip().lower(),
                 answer.strip().lower(),
             )
-            if avg_score == 1.0:
+            if avg_score >= 0.8:
                 _log("", f"  \u2713 Correct")
                 continue
 

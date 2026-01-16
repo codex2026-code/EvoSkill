@@ -33,7 +33,10 @@ def load_results(path: Path) -> list[IndexedEvalResult]:
 def get_successful_indices(path: Path) -> set[int]:
     """Get set of indices that completed successfully (no error)."""
     results = load_results(path)
-    return {r.index for r in results if r.error is None}
+    return {
+        r.index for r in results
+        if r.error is None and (r.trace is None or not r.trace.is_error)
+    }
 
 
 async def evaluate_full(

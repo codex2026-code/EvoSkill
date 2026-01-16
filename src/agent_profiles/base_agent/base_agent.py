@@ -32,7 +32,7 @@ def get_base_agent_options() -> ClaudeAgentOptions:
         "schema": AgentResponse.model_json_schema()
     }
 
-    file_path = os.path.join(get_project_root(), "treasury_bulletins_transformed/")
+    file_path = os.path.join(get_project_root(), "treasury_bulletins_parsed/")
 
     return ClaudeAgentOptions(
         system_prompt=system_prompt,

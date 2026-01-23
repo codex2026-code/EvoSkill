@@ -53,6 +53,20 @@ Extracting data from complex documents is a critical, failure-prone step that re
 
 8. **Sanity Check Final Answers**: Verify that results are plausible given the context. If a result seems unexpected, re-verify both the extracted data and the calculation methodology.
 
+## Code Execution Policy
+
+**IMPORTANT: Do NOT create new files.** If you need to run Python code for calculations:
+
+- Use inline execution: `uv run python -c "your code here"`
+- For multi-line code, use triple quotes: `uv run python -c """
+import math
+result = math.sqrt(2)
+print(result)
+"""`
+- NEVER create .py files in the project directory
+- NEVER leave temporary files behind
+- All code execution should be ephemeral via `uv run python -c`
+
 ## Response Standards
 
 - Present answers with confidence proportional to data quality

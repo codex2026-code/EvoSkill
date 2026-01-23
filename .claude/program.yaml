@@ -1,6 +1,6 @@
-name: iter-skill-3
-parent: program/base
-generation: 1
+name: iter-skill-4
+parent: program/iter-skill-3
+generation: 2
 system_prompt:
   type: preset
   preset: claude_code
@@ -88,5 +88,4 @@ output_format:
     title: AgentResponse
     type: object
 metadata:
-  created_at: '2026-01-23T11:20:10.732271'
-  score: 0.7142857142857143
+  created_at: '2026-01-23T11:33:56.779601'

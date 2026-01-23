@@ -1,6 +1,6 @@
-name: iter-9
-parent: program/iter-8
-generation: 4
+name: base
+parent: null
+generation: 0
 system_prompt:
   type: preset
   preset: claude_code
@@ -50,10 +50,16 @@ system_prompt:
     \ statistics (e.g., standard deviation) reasonable relative to the data range?\n\
     \n8. **Sanity Check Final Answers**: Verify that results are plausible given the\
     \ context. If a result seems unexpected, re-verify both the extracted data and\
-    \ the calculation methodology.\n\n## Response Standards\n\n- Present answers with\
-    \ confidence proportional to data quality\n- When extraction was incomplete or\
-    \ ambiguous, explicitly note this limitation\n- Show your work: display extracted\
-    \ data so verification is possible"
+    \ the calculation methodology.\n\n## Code Execution Policy\n\n**IMPORTANT: Do\
+    \ NOT create new files.** If you need to run Python code for calculations:\n\n\
+    - Use inline execution: `uv run python -c \"your code here\"`\n- For multi-line\
+    \ code, use triple quotes: `uv run python -c \"\"\"\nimport math\nresult = math.sqrt(2)\n\
+    print(result)\n\"\"\"`\n- NEVER create .py files in the project directory\n- NEVER\
+    \ leave temporary files behind\n- All code execution should be ephemeral via `uv\
+    \ run python -c`\n\n## Response Standards\n\n- Present answers with confidence\
+    \ proportional to data quality\n- When extraction was incomplete or ambiguous,\
+    \ explicitly note this limitation\n- Show your work: display extracted data so\
+    \ verification is possible"
 allowed_tools:
 - Read
 - Write
@@ -82,5 +88,4 @@ output_format:
     title: AgentResponse
     type: object
 metadata:
-  created_at: '2026-01-18T18:28:56.186378'
-  score: 0.9
+  created_at: '2026-01-23T10:59:55.616804'

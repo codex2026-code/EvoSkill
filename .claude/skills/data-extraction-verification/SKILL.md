@@ -47,6 +47,8 @@ Watch for:
 - "end of period" vs "during period"
 - "total" vs specific subcategory
 
+**Stop condition:** If your column header does not contain the exact words from the question, verify it's the correct metric before proceeding.
+
 ### 4. Magnitude Sanity Check
 
 - Estimate expected order of magnitude from context

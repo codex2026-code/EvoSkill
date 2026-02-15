@@ -38,6 +38,13 @@ Before reporting inability to find data:
    - If 96% have X, then ~4% don't have X
    - If list shows 11 items but "top 12" is mentioned, one is missing
 
+**Rule 3a: Data Source Follow-Through** - If you identify a specific data source that should contain the answer (database URL, API endpoint, indicator code, dataset ID), you MUST attempt to fetch from it before concluding "unable to find."
+
+- ❌ "The ITU DataHub has indicator 100095 for 2G coverage. To get the exact figure, query the DataHub directly." → WRONG: identified source but didn't fetch
+- ✓ "The ITU DataHub has indicator 100095. Let me query it directly..." [proceeds to fetch] → CORRECT
+
+Anti-pattern: Telling the user "you would need to query X" when you could query X yourself.
+
 Only report "unable to find" after exhausting these steps.
 
 ## Rule 4: Enumeration Completeness Check

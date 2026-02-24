@@ -6,6 +6,7 @@ from typing import Literal
 
 
 EvolutionMode = Literal["prompt_only", "skill_only"]
+SelectionStrategy = Literal["best", "random", "round_robin"]
 
 
 @dataclass
@@ -19,6 +20,8 @@ class LoopConfig:
         tolerance: Tolerance for answer matching (0.0 = exact match).
         concurrency: Number of concurrent evaluations.
         evolution_mode: Which dimension to evolve ("prompt_only" or "skill_only").
+        selection_strategy: Parent selection from frontier — "best" (greedy, default),
+            "random" (uniform random), or "round_robin" (cycle through ranked members).
         reset_feedback: Whether to reset feedback_history.md on fresh loop run.
         cache_enabled: Whether to enable run caching.
         cache_dir: Directory for cache storage.
@@ -33,6 +36,9 @@ class LoopConfig:
 
     # Evolution mode: which dimension to optimize
     evolution_mode: EvolutionMode = "skill_only"
+
+    # Parent selection strategy: how to pick the next parent from the frontier
+    selection_strategy: SelectionStrategy = "best"
 
     # Multi-sample failure analysis: test this many samples before proposing
     # Helps identify patterns rather than overfitting to single failures

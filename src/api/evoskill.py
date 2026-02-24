@@ -49,6 +49,8 @@ class EvoSkill:
         cache_enabled: Whether to enable run caching.
         reset_feedback: Whether to reset feedback_history.md on fresh loop run.
         failure_samples: Number of failure samples per iteration.
+        selection_strategy: Parent selection from frontier — "best" (greedy, default),
+            "random" (uniform random), or "round_robin" (cycle through ranked members).
         scorer: Custom scorer function, overrides the task's default.
         task_config: Custom TaskConfig, overrides the task name lookup.
     """
@@ -70,6 +72,7 @@ class EvoSkill:
         cache_enabled: bool = True,
         reset_feedback: bool = True,
         failure_samples: int = 3,
+        selection_strategy: str = "best",
         scorer: ScorerFn | None = None,
         task_config: TaskConfig | None = None,
     ) -> None:
@@ -91,6 +94,7 @@ class EvoSkill:
         self._cache_enabled = cache_enabled
         self._reset_feedback = reset_feedback
         self._failure_samples = failure_samples
+        self._selection_strategy = selection_strategy
         self._scorer_override = scorer
 
     def _build_config(self) -> LoopConfig:
@@ -106,6 +110,7 @@ class EvoSkill:
             cache_enabled=self._cache_enabled,
             reset_feedback=self._reset_feedback,
             continue_mode=self._continue_mode,
+            selection_strategy=self._selection_strategy,
         )
 
     def _build_agents(self) -> LoopAgents:

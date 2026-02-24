@@ -232,7 +232,7 @@ class SelfImprovingLoop:
         # 1. Create and evaluate base program if needed (skip in continue mode with existing frontier)
         if self.config.continue_mode and self.manager.get_frontier():
             # Continue mode: use existing frontier, switch to best program
-            best = self._get_best_parent()
+            best = self._select_parent()
             self.manager.switch_to(best)
             frontier_str = ", ".join(f"{n}:{s:.2f}" for n, s in self.manager.get_frontier_with_scores())
             _log("CONTINUE", f"Using existing frontier: [{frontier_str}]")
@@ -252,8 +252,8 @@ class SelfImprovingLoop:
             if resume_iteration is not None and actual_iteration <= resume_iteration:
                 continue
 
-            # Select best parent from frontier
-            parent = self._get_best_parent()
+            # Select parent from frontier using configured strategy
+            parent = self._select_parent(iteration_count)
             self.manager.switch_to(parent)
             _log(f"ITER {iteration_count}/{self.config.max_iterations}", f"Parent: {parent}")
 
@@ -602,10 +602,19 @@ and modify it to add these capabilities. Preserve all existing content that is s
 
         return shortest
 
-    def _get_best_parent(self) -> str:
-        """Get best program from frontier, or 'base' if frontier is empty."""
-        best = self.manager.get_best_from_frontier()
-        return best if best else "base"
+    def _select_parent(self, iteration: int = 0) -> str:
+        """Select a parent program from the frontier using the configured strategy.
+
+        Args:
+            iteration: Current iteration number (used by round_robin strategy).
+
+        Returns:
+            Program name to use as parent, or 'base' if frontier is empty.
+        """
+        selected = self.manager.select_from_frontier(
+            self.config.selection_strategy, iteration
+        )
+        return selected if selected else "base"
 
     def _get_active_skills(self) -> list[str]:
         """Get list of currently active skills.

@@ -6,6 +6,7 @@ Each program is stored as a git branch with:
 - .claude/skills/: Generated skills for this program
 """
 
+import random
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -255,6 +256,26 @@ class ProgramManager:
             except Exception:
                 continue
         return sorted(scored, key=lambda x: x[1], reverse=True)
+
+    def select_from_frontier(self, strategy: str, iteration: int = 0) -> str | None:
+        """Select a program from the frontier using the given strategy.
+
+        Args:
+            strategy: Selection strategy — "best", "random", or "round_robin".
+            iteration: Current iteration number (used by round_robin).
+
+        Returns:
+            Program name, or None if frontier is empty.
+        """
+        scored = self.get_frontier_with_scores()
+        if not scored:
+            return None
+        if strategy == "random":
+            return random.choice(scored)[0]
+        if strategy == "round_robin":
+            return scored[iteration % len(scored)][0]
+        # Default: "best"
+        return scored[0][0]
 
     def get_best_from_frontier(self) -> str | None:
         """

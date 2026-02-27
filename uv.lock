@@ -720,6 +720,20 @@ wheels = [
 ]
 
 [[package]]
+name = "docker"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/9b/4a2ea29aeba62471211598dac5d96825bb49348fa07e906ea930394a83ce/docker-7.1.0.tar.gz", hash = "sha256:ad8c70e6e3f8926cb8a92619b832b4ea5299e2831c14284663184e200546fa6c", size = 117834, upload-time = "2024-05-23T11:13:57.216Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/26/57c6fb270950d476074c087527a558ccb6f4436657314bfb6cdf484114c4/docker-7.1.0-py3-none-any.whl", hash = "sha256:c96b93b7f0a746f9e77d325bcfb87422a3d8bd4f03136ae8a85b37f1898d5fc0", size = 147774, upload-time = "2024-05-23T11:13:55.01Z" },
+]
+
+[[package]]
 name = "dspy"
 version = "3.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -763,6 +777,7 @@ dependencies = [
     { name = "dspy" },
     { name = "ipykernel" },
     { name = "ipywidgets" },
+    { name = "llm-sandbox", extra = ["docker"] },
     { name = "nbformat" },
     { name = "notebook" },
     { name = "opencode-ai" },
@@ -783,6 +798,7 @@ requires-dist = [
     { name = "dspy", specifier = ">=3.0.4" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
+    { name = "llm-sandbox", extras = ["docker"], specifier = ">=0.3.36" },
     { name = "nbformat", specifier = ">=5.10.4" },
     { name = "notebook", specifier = ">=7.5.3" },
     { name = "opencode-ai", specifier = ">=0.0.26" },
@@ -1770,6 +1786,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/55/47/be6cd7b356418ca8bef3b843507940ce77b76ef2dfe515f2b4ba9b461ff0/litellm-1.80.11.tar.gz", hash = "sha256:c9fc63e7acb6360363238fe291bcff1488c59ff66020416d8376c0ee56414a19", size = 13189510, upload-time = "2025-12-22T12:47:29.181Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/0b/9e637344f24f3fe0e8039cd2337389fe05e0d31f518bc3e0a5cdbe45784a/litellm-1.80.11-py3-none-any.whl", hash = "sha256:406283d66ead77dc7ff0e0b2559c80e9e497d8e7c2257efb1cb9210a20d09d54", size = 11456346, upload-time = "2025-12-22T12:47:26.469Z" },
+]
+
+[[package]]
+name = "llm-sandbox"
+version = "0.3.36"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2b/d9/297add17e3f627055d5d8756a92e99b3df4223b0ac9bbcf2f24f71a64a5c/llm_sandbox-0.3.36.tar.gz", hash = "sha256:53137c974ba34efaf7ce996fd0b79bb59068e0621e863d1305ff4143f23a52e2", size = 605808, upload-time = "2026-02-23T09:43:58.266Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/75/9bf3f5e4eda30391063faaccf0664faa44e4b9d30c34438dc169542c8eba/llm_sandbox-0.3.36-py3-none-any.whl", hash = "sha256:3b0f65b299e0d4aad44fb525ff61fabaadb4472a586723841418688da2ff8329", size = 106813, upload-time = "2026-02-23T09:43:57.171Z" },
+]
+
+[package.optional-dependencies]
+docker = [
+    { name = "docker" },
 ]
 
 [[package]]

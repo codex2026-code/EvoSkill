@@ -26,3 +26,4 @@ DABstep-data/
 *.txt
 output.txt
 tests/
+scratch/

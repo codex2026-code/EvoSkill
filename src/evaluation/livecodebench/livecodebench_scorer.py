@@ -1,8 +1,6 @@
 import re
-import subprocess
-import tempfile
 import json
-from pathlib import Path
+from llm_sandbox import SandboxSession
 
 
 # Regex to extract code from markdown code blocks
@@ -27,7 +25,7 @@ def extract_code(response: str) -> str | None:
 def run_code_with_input(
     code: str, test_input: str, timeout: int = 5
 ) -> tuple[bool, str]:
-    """Execute Python code with given input and capture output.
+    """Execute Python code with given input in a secure sandbox.
 
     Args:
         code: Python code to execute
@@ -38,29 +36,30 @@ def run_code_with_input(
         Tuple of (success, output/error)
     """
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(code)
-            code_file = f.name
+        # Wrap code to read from stdin and handle input
+        wrapped_code = f"""
+import sys
+from io import StringIO
 
-        try:
-            result = subprocess.run(
-                ["python3", code_file],
-                input=test_input,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+# Mock stdin with test input
+sys.stdin = StringIO({repr(test_input)})
 
-            if result.returncode == 0:
+# Execute the user's code
+{code}
+"""
+
+        with SandboxSession(
+            lang="python",
+            keep_template=False,
+            verbose=False,
+        ) as session:
+            result = session.run(wrapped_code)
+
+            if result.exit_code == 0:
                 return True, result.stdout.strip()
             else:
                 return False, result.stderr.strip()
 
-        finally:
-            Path(code_file).unlink(missing_ok=True)
-
-    except subprocess.TimeoutExpired:
-        return False, "Execution timeout"
     except Exception as e:
         return False, str(e)
 
@@ -81,9 +80,12 @@ def score_livecodebench(question: str, ground_truth: str, predicted: str) -> flo
     if not code:
         return 0.0
 
-    # Parse test cases from ground_truth (which is a JSON string of test cases)
+    # Parse test cases from ground_truth (which may be double-encoded JSON)
     try:
         test_cases = json.loads(ground_truth)
+        # Handle double-encoded JSON (string -> string -> list)
+        if isinstance(test_cases, str):
+            test_cases = json.loads(test_cases)
         if not isinstance(test_cases, list):
             return 0.0
     except (json.JSONDecodeError, TypeError):
@@ -98,7 +100,7 @@ def score_livecodebench(question: str, ground_truth: str, predicted: str) -> flo
         test_input = test_case.get("input", "")
         expected_output = test_case.get("output", "").strip()
 
-        success, actual_output = run_code_with_input(code, test_input)
+        success, actual_output = run_code_with_input(code, test_input, timeout=5)
 
         if success and actual_output == expected_output:
             passed += 1

@@ -85,6 +85,7 @@ This cycle repeats for a configurable number of iterations, automatically conver
 **Requirements:**
 - Python 3.12+
 - [`uv`](https://github.com/astral-sh/uv) (recommended) or `pip`
+- Docker (for LiveCodeBench evaluation with secure code execution sandbox)
 
 **Install dependencies:**
 

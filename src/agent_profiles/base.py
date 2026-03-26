@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, Type, TypeVa
 
 from pydantic import BaseModel, ValidationError
 
+from .openai_local_tools import OpenAILocalToolRuntime
 from .sdk_config import is_claude_sdk, is_openai_sdk
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,18 @@ class Agent(Generic[T]):
         if model:
             normalized["model_id"] = model
 
+        allowed_tools = getattr(options, "allowed_tools", None)
+        if allowed_tools is not None:
+            normalized["allowed_tools"] = list(allowed_tools)
+
+        cwd = getattr(options, "cwd", None)
+        if cwd is not None:
+            normalized["cwd"] = str(cwd)
+
+        add_dirs = getattr(options, "add_dirs", None)
+        if add_dirs is not None:
+            normalized["add_dirs"] = [str(p) for p in add_dirs]
+
         return normalized
 
     async def _execute_query(self, query: str) -> list[Any]:
@@ -287,10 +300,65 @@ class Agent(Generic[T]):
                 messages.append({"role": "system", "content": str(system_text)})
             messages.append({"role": "user", "content": user_text})
 
-            completion = await client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-            )
+            runtime = OpenAILocalToolRuntime.from_options(normalized_options)
+            tool_defs = runtime.get_openai_tools()
+
+            max_tool_rounds = 24
+            completion = None
+            for _ in range(max_tool_rounds):
+                completion = await client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    tools=tool_defs if tool_defs else None,
+                    tool_choice="auto" if tool_defs else None,
+                )
+                choice = completion.choices[0] if completion.choices else None
+                msg = choice.message if choice else None
+                tool_calls = getattr(msg, "tool_calls", None) if msg else None
+                if not msg:
+                    break
+
+                if tool_calls:
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": msg.content,
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in tool_calls
+                            ],
+                        }
+                    )
+
+                    for tc in tool_calls:
+                        tool_output = await runtime.execute(
+                            tc.function.name, tc.function.arguments
+                        )
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "name": tc.function.name,
+                                "content": tool_output,
+                            }
+                        )
+                    continue
+
+                break
+
+            if completion is None:
+                raise RuntimeError("OpenAI completion failed to return a response")
+            if getattr(completion.choices[0].message, "tool_calls", None):
+                raise RuntimeError(
+                    f"OpenAI tool-calling did not converge within {max_tool_rounds} rounds"
+                )
 
             return [completion]
 
@@ -446,6 +514,7 @@ class Agent(Generic[T]):
 
             options = self._normalize_options_for_openai(self._get_options())
             model_name = options.get("model_id") or os.getenv("OPENAI_MODEL") or "unknown"
+            tools = list(options.get("allowed_tools", []))
 
             usage_payload: dict[str, Any] = {}
             if getattr(completion, "usage", None):
@@ -455,7 +524,7 @@ class Agent(Generic[T]):
                 uuid=getattr(completion, "id", "unknown"),
                 session_id=getattr(completion, "id", "unknown"),
                 model=model_name,
-                tools=[],
+                tools=tools,
                 duration_ms=0,
                 total_cost_usd=0.0,
                 num_turns=1,

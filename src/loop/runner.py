@@ -96,6 +96,7 @@ class LoopResult:
     best_program: str
     best_score: float
     iterations_completed: int
+    history: list[dict]
 
 
 class SelfImprovingLoop:
@@ -207,6 +208,9 @@ class SelfImprovingLoop:
         Returns:
             LoopResult with frontier, best program, and iteration count.
         """
+        # Keep a structured in-memory trail for external inspection.
+        history: list[dict] = []
+
         # 0. Handle continue mode and feedback reset
         resume_iteration: int | None = None
         if not self.config.continue_mode:
@@ -247,6 +251,10 @@ class SelfImprovingLoop:
         for i in range(self.config.max_iterations):
             iteration_count = i + 1
             actual_iteration = iteration_count + self._iteration_offset
+            iteration_record: dict = {
+                "iteration": iteration_count,
+                "actual_iteration": actual_iteration,
+            }
 
             # Skip already-completed iterations when resuming with checkpoint
             if resume_iteration is not None and actual_iteration <= resume_iteration:
@@ -256,6 +264,7 @@ class SelfImprovingLoop:
             parent = self._select_parent(iteration_count)
             self.manager.switch_to(parent)
             _log(f"ITER {iteration_count}/{self.config.max_iterations}", f"Parent: {parent}")
+            iteration_record["parent"] = parent
 
             # Round-robin sampling: pick samples_per_category from each of N categories (cycling)
             n_cats_this_iter = min(self.config.categories_per_batch, n_cats)
@@ -280,6 +289,11 @@ class SelfImprovingLoop:
             self._category_offset += n_cats_this_iter
 
             _log("", f"  Testing {len(test_samples)} samples from categories: {', '.join(sampled_cats)}...")
+            iteration_record["sampled_categories"] = sampled_cats
+            iteration_record["test_samples"] = [
+                {"question": q, "ground_truth": a, "category": c}
+                for q, a, c in test_samples
+            ]
 
             # Run all samples concurrently
             traces = await asyncio.gather(*[
@@ -288,6 +302,7 @@ class SelfImprovingLoop:
 
             # Collect failures
             failures: list[tuple[AgentTrace, str, str, str]] = []  # (trace, agent_answer, ground_truth, category)
+            failure_records: list[dict] = []
             for trace, (question, answer, category) in zip(traces, test_samples):
                 agent_answer = (
                     trace.output.final_answer if trace.output else "[PARSE FAILED]"
@@ -300,11 +315,36 @@ class SelfImprovingLoop:
                 status = "[OK]" if avg_score >= 0.8 else "[FAIL]"
                 _log("", f"    {status} [{category}] {question[:40]}...")
                 if avg_score < 0.8:
+                    failure_records.append(
+                        {
+                            "question": question,
+                            "ground_truth": answer,
+                            "category": category,
+                            "agent_answer": agent_answer,
+                            "score": avg_score,
+                            "trace_summary": trace.summarize(
+                                head_chars=4_000, tail_chars=2_000
+                            ),
+                            "trace_parse_error": trace.parse_error,
+                            "trace_output": (
+                                trace.output.model_dump()
+                                if trace.output is not None
+                                else None
+                            ),
+                            "trace_result": str(trace.result) if trace.result else "",
+                        }
+                    )
+                if avg_score < 0.8:
                     failures.append((trace, agent_answer, answer, category))
+            iteration_record["failures"] = failure_records
 
             # Always propose if any failures exist
             if len(failures) == 0:
                 _log("", f"  -> All samples passed, no proposal needed")
+                iteration_record["proposal"] = None
+                iteration_record["child"] = None
+                iteration_record["outcome"] = "all_passed"
+                history.append(iteration_record)
                 continue
 
             _log("", f"  -> {len(failures)} failure(s), proposing improvement...")
@@ -314,18 +354,28 @@ class SelfImprovingLoop:
                 (score for name, score in self.manager.get_frontier_with_scores() if name == parent),
                 0.0
             )
+            iteration_record["parent_score"] = parent_score
 
             # Run proposer with all failures (use actual iteration number with offset)
             mutation_result = await self._mutate_with_fallback(parent, failures, actual_iteration)
 
             if mutation_result is None:
+                iteration_record["proposal"] = None
+                iteration_record["child"] = None
+                iteration_record["outcome"] = "mutation_failed"
                 no_improvement_count += 1
             else:
                 child_name, proposal, justification = mutation_result
+                iteration_record["proposal"] = {
+                    "proposal": proposal,
+                    "justification": justification,
+                }
+                iteration_record["child"] = {"name": child_name}
 
                 # Evaluate child
                 _log("", f"  -> Evaluating {child_name}...")
                 child_score = await self._evaluate(self.val_data)
+                iteration_record["child"]["score"] = child_score
 
                 # Update frontier or discard
                 added = self.manager.update_frontier(
@@ -335,10 +385,12 @@ class SelfImprovingLoop:
                 if added:
                     _log("", f"  [OK] Added to frontier (score: {child_score:.4f})")
                     outcome = "improved"
+                    iteration_record["outcome"] = "improved"
                     no_improvement_count = 0
                 else:
                     _log("", f"  [SKIP] Discarded (score: {child_score:.4f})")
                     outcome = "discarded"
+                    iteration_record["outcome"] = "discarded"
                     self.manager.discard(child_name)
                     no_improvement_count += 1
 
@@ -354,15 +406,20 @@ class SelfImprovingLoop:
                     parent_score=parent_score,
                     active_skills=active_skills,
                 )
+                iteration_record["active_skills"] = active_skills
 
             # Check early stopping
             if no_improvement_count >= self.config.no_improvement_limit:
                 _log("STOP", f"No improvement for {self.config.no_improvement_limit} iterations")
+                iteration_record["stopped_early"] = True
+                history.append(iteration_record)
                 break
 
             # Print frontier status
             frontier_str = ", ".join(f"{n}:{s:.2f}" for n, s in self.manager.get_frontier_with_scores())
             _log("", f"  Frontier: [{frontier_str}]")
+            iteration_record["frontier"] = self.manager.get_frontier_with_scores()
+            history.append(iteration_record)
 
             # Save checkpoint at end of each successful iteration
             self._save_checkpoint(actual_iteration)
@@ -379,6 +436,7 @@ class SelfImprovingLoop:
             best_program=best or "base",
             best_score=best_score,
             iterations_completed=iteration_count,
+            history=history,
         )
 
     async def _ensure_base_program(self) -> None:

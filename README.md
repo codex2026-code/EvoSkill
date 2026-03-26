@@ -150,6 +150,7 @@ evo = EvoSkill(
     continue_mode=False,
 )
 result = await evo.run()
+print(result.history[-1])  # Structured iteration trail (sampling/failures/proposal/outcome)
 
 # Synchronous usage (wraps asyncio.run)
 result = EvoSkill(task="base").run_sync()
@@ -375,4 +376,3 @@ If you use EvoSkill in your research, please cite:
 ## 📄 License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
-

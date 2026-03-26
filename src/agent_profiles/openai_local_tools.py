@@ -11,6 +11,8 @@ import asyncio
 import json
 import os
 import re
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,7 @@ class OpenAILocalToolRuntime:
         self.add_dirs = [p.resolve() for p in self.add_dirs]
         # Always allow cwd as a root.
         self._roots = [self.cwd, *self.add_dirs]
+        self._skills_root = self.cwd / ".claude" / "skills"
 
     @classmethod
     def from_options(cls, options: dict[str, Any]) -> "OpenAILocalToolRuntime":
@@ -181,7 +184,7 @@ class OpenAILocalToolRuntime:
                 "type": "function",
                 "function": {
                     "name": "Skill",
-                    "description": "Compatibility stub for Skill tool.",
+                    "description": "Load a local skill from .claude/skills/<name>/SKILL.md.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -196,18 +199,29 @@ class OpenAILocalToolRuntime:
                 "type": "function",
                 "function": {
                     "name": "WebFetch",
-                    "description": "Compatibility stub (not implemented in local runtime).",
-                    "parameters": {"type": "object", "properties": {"url": {"type": "string"}}},
+                    "description": "Fetch URL content as UTF-8 text.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "url": {"type": "string"},
+                            "max_chars": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["url"],
+                    },
                 },
             },
             "WebSearch": {
                 "type": "function",
                 "function": {
                     "name": "WebSearch",
-                    "description": "Compatibility stub (not implemented in local runtime).",
+                    "description": "Run a web search and return top result snippets.",
                     "parameters": {
                         "type": "object",
-                        "properties": {"query": {"type": "string"}},
+                        "properties": {
+                            "query": {"type": "string"},
+                            "max_results": {"type": "integer", "minimum": 1},
+                        },
+                        "required": ["query"],
                     },
                 },
             },
@@ -251,13 +265,12 @@ class OpenAILocalToolRuntime:
                 return await self._tool_bash(args)
             if tool_name == "TodoWrite":
                 return self._tool_todo_write(args)
-            if tool_name in ("Skill", "WebFetch", "WebSearch"):
-                return _safe_json_dump(
-                    {
-                        "ok": False,
-                        "error": f"{tool_name} is not yet implemented in OpenAI local runtime.",
-                    }
-                )
+            if tool_name == "Skill":
+                return self._tool_skill(args)
+            if tool_name == "WebFetch":
+                return await self._tool_webfetch(args)
+            if tool_name == "WebSearch":
+                return await self._tool_websearch(args)
             return _safe_json_dump({"ok": False, "error": f"Unsupported tool: {tool_name}"})
         except Exception as e:
             return _safe_json_dump({"ok": False, "error": f"{type(e).__name__}: {e}"})
@@ -364,3 +377,120 @@ class OpenAILocalToolRuntime:
             return _safe_json_dump({"ok": False, "error": "todos must be a list"})
         self.todo_state = todos
         return _safe_json_dump({"ok": True, "todos_count": len(self.todo_state)})
+
+    def _tool_skill(self, args: dict[str, Any]) -> str:
+        name = (args.get("name") or "").strip()
+        if not name:
+            return _safe_json_dump({"ok": False, "error": "name is required"})
+
+        # Claude skill names are directory names. Keep lookup strict and local.
+        skill_dir = (self._skills_root / name).resolve()
+        try:
+            skill_dir.relative_to(self._skills_root.resolve())
+        except ValueError:
+            return _safe_json_dump({"ok": False, "error": "invalid skill name/path"})
+
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.exists():
+            return _safe_json_dump(
+                {"ok": False, "error": f"Skill not found: {name}", "path": str(skill_file)}
+            )
+
+        content = skill_file.read_text(encoding="utf-8")
+        return _safe_json_dump(
+            {
+                "ok": True,
+                "name": name,
+                "path": str(skill_file),
+                "input": args.get("input", ""),
+                "content": content,
+            }
+        )
+
+    async def _tool_webfetch(self, args: dict[str, Any]) -> str:
+        url = args.get("url")
+        if not isinstance(url, str) or not url.strip():
+            return _safe_json_dump({"ok": False, "error": "url is required"})
+        max_chars = int(args.get("max_chars", 12000))
+
+        def _fetch() -> tuple[str, str]:
+            req = urllib.request.Request(
+                url.strip(),
+                headers={"User-Agent": "EvoSkill/1.0 (OpenAILocalToolRuntime)"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                body = resp.read()
+                content_type = resp.headers.get("Content-Type", "")
+                text = body.decode("utf-8", errors="replace")
+                return text, content_type
+
+        text, content_type = await asyncio.to_thread(_fetch)
+        trimmed = text[:max_chars]
+        return _safe_json_dump(
+            {
+                "ok": True,
+                "url": url,
+                "content_type": content_type,
+                "content": trimmed,
+                "truncated": len(text) > len(trimmed),
+            }
+        )
+
+    async def _tool_websearch(self, args: dict[str, Any]) -> str:
+        query = args.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return _safe_json_dump({"ok": False, "error": "query is required"})
+        max_results = int(args.get("max_results", 5))
+        max_results = max(1, min(max_results, 10))
+        q = urllib.parse.quote_plus(query.strip())
+        url = f"https://duckduckgo.com/html/?q={q}"
+
+        # Reuse WebFetch behavior for networking and decoding.
+        fetch_result = json.loads(await self._tool_webfetch({"url": url, "max_chars": 250_000}))
+        if not fetch_result.get("ok"):
+            return _safe_json_dump(fetch_result)
+
+        html = fetch_result.get("content", "")
+        pattern = re.compile(
+            r'<a[^>]*class="result__a"[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<title>.*?)</a>',
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        snippet_pattern = re.compile(
+            r'<a[^>]*class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        def _strip_tags(raw: str) -> str:
+            no_tags = re.sub(r"<[^>]+>", "", raw)
+            return re.sub(r"\s+", " ", no_tags).strip()
+
+        titles = list(pattern.finditer(html))
+        snippets = list(snippet_pattern.finditer(html))
+        results: list[dict[str, str]] = []
+        for idx, match in enumerate(titles[:max_results]):
+            snippet = _strip_tags(snippets[idx].group("snippet")) if idx < len(snippets) else ""
+            results.append(
+                {
+                    "title": _strip_tags(match.group("title")),
+                    "url": urllib.parse.unquote(match.group("href")),
+                    "snippet": snippet,
+                }
+            )
+
+        if not results:
+            return _safe_json_dump(
+                {
+                    "ok": False,
+                    "error": "No results parsed from search provider response",
+                    "provider_url": url,
+                }
+            )
+
+        return _safe_json_dump(
+            {
+                "ok": True,
+                "query": query,
+                "provider_url": url,
+                "results": results,
+            }
+        )

@@ -2,11 +2,14 @@ import asyncio
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from tqdm.asyncio import tqdm_asyncio
 
 from src.agent_profiles.base import Agent, AgentTrace
+
+if TYPE_CHECKING:
+    from src.cache import RunCache
 
 T = TypeVar("T")
 
@@ -45,6 +48,8 @@ async def evaluate_full(
     output_path: Path,
     max_concurrent: int = 5,
     resume: bool = True,
+    *,
+    cache: "RunCache | None" = None,
 ) -> list[IndexedEvalResult[T]]:
     """
     Run agent on multiple questions in parallel, saving incrementally.
@@ -95,7 +100,13 @@ async def evaluate_full(
             trace = None
             try:
                 async with asyncio.timeout(1020):  # 17-minute hard limit per eval
-                    trace = await agent.run(question)
+                    if cache is not None:
+                        trace = cache.get(question, agent.response_model)
+
+                    if trace is None:
+                        trace = await agent.run(question)
+                        if cache is not None:
+                            cache.set(question, trace)
             except asyncio.TimeoutError:
                 error = "TimeoutError: Eval timed out after 17 minutes"
                 print(f"[TIMEOUT] Index {index}: {question[:50]}...")

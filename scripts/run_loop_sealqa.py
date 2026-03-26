@@ -15,6 +15,7 @@ from src.agent_profiles import (
     prompt_proposer_options,
     skill_generator_options,
     prompt_generator_options,
+    set_sdk,
 )
 from src.agent_profiles.skill_generator import get_project_root
 from src.evaluation.sealqa_scorer import score_sealqa
@@ -154,10 +155,19 @@ def parse_args() -> argparse.Namespace:
         default="claude-opus-4-5-20251101",
         help="Model for base agent (default: opus via SDK default)",
     )
+    parser.add_argument(
+        "--sdk",
+        type=str,
+        choices=["claude", "opencode", "openai"],
+        default="claude",
+        help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
+    )
     return parser.parse_args()
 
 
 async def main(args: argparse.Namespace):
+    set_sdk(args.sdk)
+
     data = pd.read_csv(args.dataset)
 
     # Rename SEAL-QA columns to match stratified_split expectations

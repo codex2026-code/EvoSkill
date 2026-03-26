@@ -98,10 +98,18 @@ pip install -e .
 ```
 
 **Environment variables:**
-Either login to **Claude Code** or use your API key
+Choose one of the following modes:
 ```bash
-# Required — used by the Claude agent SDK
+# Claude SDK mode (default)
 export ANTHROPIC_API_KEY=your-key-here
+
+# OpenAI SDK mode (official OpenAI API)
+export OPENAI_API_KEY=your-openai-key
+
+# OpenAI SDK mode (local OpenAI-compatible endpoint)
+export OPENAI_BASE_URL=http://local-address/v1
+# Some local deployments do not require an API key; empty is acceptable there
+export OPENAI_API_KEY=
 ```
 
 **SDK and Model Selection:**
@@ -114,6 +122,14 @@ uv run python scripts/run_eval.py --sdk claude --model claude-sonnet-4-5-2025051
 # OpenCode SDK with different models
 uv run python scripts/run_eval.py --sdk opencode --model deepseek-ai/DeepSeek-V3
 uv run python scripts/run_eval.py --sdk opencode --model google/gemini-2.0-flash-exp
+
+# OpenAI SDK (official API)
+uv run python scripts/run_eval.py --sdk openai --model gpt-4.1
+
+# OpenAI-compatible local model endpoint
+OPENAI_BASE_URL=http://local-address/v1 \
+OPENAI_API_KEY= \
+uv run python scripts/run_eval.py --sdk openai --model your-local-model-name
 ```
 
 **Dataset preparation:**

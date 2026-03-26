@@ -1,11 +1,12 @@
 import asyncio
 import json
 import logging
+import os
 from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel, ValidationError
 
-from .sdk_config import is_claude_sdk
+from .sdk_config import is_claude_sdk, is_openai_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,60 @@ class Agent(Generic[T]):
             return self._options()
         return self._options
 
+    @staticmethod
+    def _safe_json_loads(raw_text: str) -> Any:
+        """Parse JSON from text; tolerate fenced blocks and leading/trailing prose."""
+        text = raw_text.strip()
+        if not text:
+            raise json.JSONDecodeError("Empty response", raw_text, 0)
+
+        if "```" in text:
+            parts = text.split("```")
+            for part in parts:
+                candidate = part.strip()
+                if candidate.startswith("json"):
+                    candidate = candidate[4:].strip()
+                if candidate:
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        continue
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                return json.loads(text[start : end + 1])
+            raise
+
+    def _normalize_options_for_openai(self, options: Any) -> dict[str, Any]:
+        """Convert Claude/OpenCode options to a generic OpenAI-compatible dict."""
+        if isinstance(options, dict):
+            return dict(options)
+
+        normalized: dict[str, Any] = {}
+
+        system_prompt = getattr(options, "system_prompt", None)
+        if isinstance(system_prompt, dict):
+            if system_prompt.get("append"):
+                normalized["system"] = system_prompt["append"]
+            elif system_prompt.get("preset"):
+                normalized["system"] = f"System preset: {system_prompt['preset']}"
+        elif isinstance(system_prompt, str):
+            normalized["system"] = system_prompt
+
+        output_format = getattr(options, "output_format", None)
+        if output_format is not None:
+            normalized["format"] = output_format
+
+        model = getattr(options, "model", None)
+        if model:
+            normalized["model_id"] = model
+
+        return normalized
+
     async def _execute_query(self, query: str) -> list[Any]:
         """Execute a single query attempt."""
         options = self._get_options()
@@ -150,7 +205,7 @@ class Agent(Generic[T]):
             async with ClaudeSDKClient(options) as client:
                 await client.query(query)
                 return [msg async for msg in client.receive_response()]
-        else:
+        elif not is_openai_sdk():
             # OpenCode SDK path
             from opencode_ai import AsyncOpencode
 
@@ -197,6 +252,47 @@ class Agent(Generic[T]):
 
             # Return as single-item list for consistency with Claude SDK
             return [message]
+        else:
+            # OpenAI SDK path (supports both official OpenAI and local OpenAI-compatible endpoints)
+            from openai import AsyncOpenAI
+
+            normalized_options = self._normalize_options_for_openai(options)
+            model_name = normalized_options.get("model_id") or os.getenv("OPENAI_MODEL")
+            if not model_name:
+                raise ValueError(
+                    "OpenAI SDK requires a model. Set --model or OPENAI_MODEL."
+                )
+
+            base_url = os.getenv("OPENAI_BASE_URL")
+            api_key = os.getenv("OPENAI_API_KEY", "")
+
+            client = AsyncOpenAI(
+                base_url=base_url if base_url else None,
+                api_key=api_key,
+            )
+
+            system_text = normalized_options.get("system", "")
+            user_text = query
+
+            format_hint = normalized_options.get("format")
+            if format_hint:
+                user_text = (
+                    f"{query}\n\n"
+                    "You must respond with strictly valid JSON that matches this schema: "
+                    f"{json.dumps(format_hint, ensure_ascii=False)}"
+                )
+
+            messages = []
+            if system_text:
+                messages.append({"role": "system", "content": str(system_text)})
+            messages.append({"role": "user", "content": user_text})
+
+            completion = await client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+            )
+
+            return [completion]
 
     async def _run_with_retry(self, query: str) -> list[Any]:
         """Execute query with timeout and exponential backoff retry."""
@@ -265,7 +361,7 @@ class Agent(Generic[T]):
                 raw_structured_output=raw_structured_output,
                 messages=messages,
             )
-        else:
+        elif not is_openai_sdk():
             # OpenCode SDK: single AssistantMessage with extra fields
             message = messages[0]
 
@@ -320,6 +416,50 @@ class Agent(Generic[T]):
                 total_cost_usd=cost,
                 num_turns=1,
                 usage=usage,
+                result=result_text,
+                is_error=parse_error is not None,
+                output=output,
+                parse_error=parse_error,
+                raw_structured_output=raw_structured_output,
+                messages=messages,
+            )
+        else:
+            # OpenAI SDK: ChatCompletion response
+            completion = messages[0]
+            choice = completion.choices[0] if completion.choices else None
+            message = choice.message if choice else None
+            content = message.content if message else ""
+            result_text = content if isinstance(content, str) else str(content)
+
+            output = None
+            parse_error = None
+            raw_structured_output = None
+
+            if result_text:
+                try:
+                    raw_structured_output = self._safe_json_loads(result_text)
+                    output = self.response_model.model_validate(raw_structured_output)
+                except (ValidationError, json.JSONDecodeError, TypeError) as e:
+                    parse_error = f"{type(e).__name__}: {str(e)}"
+            else:
+                parse_error = "No content returned from OpenAI API"
+
+            options = self._normalize_options_for_openai(self._get_options())
+            model_name = options.get("model_id") or os.getenv("OPENAI_MODEL") or "unknown"
+
+            usage_payload: dict[str, Any] = {}
+            if getattr(completion, "usage", None):
+                usage_payload = completion.usage.model_dump()
+
+            return AgentTrace(
+                uuid=getattr(completion, "id", "unknown"),
+                session_id=getattr(completion, "id", "unknown"),
+                model=model_name,
+                tools=[],
+                duration_ms=0,
+                total_cost_usd=0.0,
+                num_turns=1,
+                usage=usage_payload,
                 result=result_text,
                 is_error=parse_error is not None,
                 output=output,

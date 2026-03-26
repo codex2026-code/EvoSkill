@@ -76,9 +76,9 @@ async def main():
     parser.add_argument(
         "--sdk",
         type=str,
-        choices=["claude", "opencode"],
+        choices=["claude", "opencode", "openai"],
         default="claude",
-        help="SDK to use: 'claude' or 'opencode' (default: claude)",
+        help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
     args = parser.parse_args()
 

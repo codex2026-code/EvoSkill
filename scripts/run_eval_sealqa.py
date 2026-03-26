@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.agent_profiles import Agent, sealqa_agent_options, make_sealqa_agent_options
+from src.agent_profiles import (
+    Agent,
+    sealqa_agent_options,
+    make_sealqa_agent_options,
+    set_sdk,
+)
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.evaluation.sealqa_scorer import score_sealqa
 from src.schemas import AgentResponse
@@ -61,7 +66,17 @@ async def main():
         default="claude-opus-4-5-20251101",
         help="Model for agent (default: claude-opus-4-5-20251101)",
     )
+    parser.add_argument(
+        "--sdk",
+        type=str,
+        choices=["claude", "opencode", "openai"],
+        default="claude",
+        help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
+    )
     args = parser.parse_args()
+
+    # Set SDK
+    set_sdk(args.sdk)
 
     # Load dataset
     data = pd.read_csv(args.dataset)

@@ -132,6 +132,31 @@ OPENAI_API_KEY= \
 uv run python scripts/run_eval.py --sdk openai --model your-local-model-name
 ```
 
+
+### EvalRunner CLI wrapper
+
+You can also run the high-level Python API (`src.api.EvalRunner`) directly from CLI:
+
+```bash
+# OpenAI-compatible local endpoint + EvalRunner
+OPENAI_BASE_URL=http://local-address/v1 \
+OPENAI_API_KEY= \
+python scripts/run_eval_runner.py \
+  --sdk openai \
+  --task sealqa \
+  --model deepseek-v3.2 \
+  --dataset .dataset/seal-0.csv \
+  --output results/sealqa_eval_local_openai.pkl \
+  --max-concurrent 1 \
+  --num-samples 2
+```
+
+A ready-to-run shell wrapper is also provided:
+
+```bash
+bash scripts/run_eval_sealqa_local_openai.sh
+```
+
 **Dataset preparation:**
 
 Place your benchmark datasets in the `.dataset/` directory:

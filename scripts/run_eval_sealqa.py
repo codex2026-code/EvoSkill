@@ -12,6 +12,7 @@ from src.agent_profiles import (
     make_sealqa_agent_options,
     set_sdk,
 )
+from src.cache import CacheConfig, RunCache
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.evaluation.sealqa_scorer import score_sealqa
 from src.schemas import AgentResponse
@@ -67,6 +68,17 @@ async def main():
         help="Model for agent (default: claude-opus-4-5-20251101)",
     )
     parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable cache lookups/writes under .cache/runs",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path(".cache/runs"),
+        help="Cache directory (default: .cache/runs)",
+    )
+    parser.add_argument(
         "--sdk",
         type=str,
         choices=["claude", "opencode", "openai"],
@@ -109,12 +121,20 @@ async def main():
     model_info = f" (model: {args.model})" if args.model else " (model: opus)"
     print(f"Agent configured{model_info}")
 
+    cache = None
+    if not args.no_cache:
+        cache = RunCache(CacheConfig(cache_dir=args.cache_dir))
+        print(f"Cache enabled: {args.cache_dir}")
+    else:
+        print("Cache disabled")
+
     results = await evaluate_full(
         agent=agent,
         items=items,
         output_path=args.output,
         max_concurrent=args.max_concurrent,
         resume=not args.no_resume,
+        cache=cache,
     )
 
     # Summary and scoring

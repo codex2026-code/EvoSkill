@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.agent_profiles import Agent
+from src.cache import CacheConfig, RunCache
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.schemas import AgentResponse
 
@@ -57,6 +58,8 @@ class EvalRunner:
         max_concurrent: int = 8,
         resume: bool = True,
         num_samples: int | None = None,
+        cache_enabled: bool = True,
+        cache_dir: str | Path = ".cache/runs",
         task_config: TaskConfig | None = None,
     ) -> None:
         self._task_config = task_config or get_task(task)
@@ -70,6 +73,8 @@ class EvalRunner:
         self._max_concurrent = max_concurrent
         self._resume = resume
         self._num_samples = num_samples
+        self._cache_enabled = cache_enabled
+        self._cache_dir = Path(cache_dir)
 
     def _load_items(self) -> tuple[pd.DataFrame, list[tuple[int, str, str]]]:
         """Load dataset and prepare (index, question, answer) items."""
@@ -131,12 +136,20 @@ class EvalRunner:
         model_info = f" (model: {self._model})" if self._model else ""
         print(f"Agent configured{model_info}")
 
+        cache = None
+        if self._cache_enabled:
+            cache = RunCache(CacheConfig(cache_dir=self._cache_dir))
+            print(f"Cache enabled: {self._cache_dir}")
+        else:
+            print("Cache disabled")
+
         await evaluate_full(
             agent=agent,
             items=items,
             output_path=self._output,
             max_concurrent=self._max_concurrent,
             resume=self._resume,
+            cache=cache,
         )
 
         all_results = load_results(self._output)

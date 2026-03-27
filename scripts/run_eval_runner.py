@@ -76,6 +76,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable resume mode (default: resume enabled)",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable cache lookups/writes under .cache/runs",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path(".cache/runs"),
+        help="Cache directory (default: .cache/runs)",
+    )
     return parser.parse_args()
 
 
@@ -91,6 +102,8 @@ async def main() -> None:
         max_concurrent=args.max_concurrent,
         resume=not args.no_resume,
         num_samples=args.num_samples,
+        cache_enabled=not args.no_cache,
+        cache_dir=str(args.cache_dir),
     )
 
     summary = await runner.run()

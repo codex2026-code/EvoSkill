@@ -115,6 +115,11 @@ class Agent(Generic[T]):
     TIMEOUT_SECONDS = 1200  # 20 minutes
     MAX_RETRIES = 3
     INITIAL_BACKOFF = 30  # seconds
+    _CLAUDE_CODE_PRESET_OPENAI_FALLBACK = (
+        "You are an autonomous coding agent operating in a local repository. "
+        "Use tools when needed for accurate results, prefer deterministic changes, "
+        "and keep outputs concise and directly actionable."
+    )
 
     def __init__(self, options: OptionsProvider, response_model: Type[T]):
         self._options = options
@@ -157,7 +162,17 @@ class Agent(Generic[T]):
     def _normalize_options_for_openai(self, options: Any) -> dict[str, Any]:
         """Convert Claude/OpenCode options to a generic OpenAI-compatible dict."""
         if isinstance(options, dict):
-            return dict(options)
+            normalized = dict(options)
+            # Also support Claude-style keys in dict-based options.
+            system_prompt = normalized.get("system_prompt")
+            if isinstance(system_prompt, dict):
+                if system_prompt.get("append"):
+                    normalized["system"] = system_prompt["append"]
+                if system_prompt.get("preset"):
+                    normalized["system_preset"] = system_prompt["preset"]
+            elif isinstance(system_prompt, str):
+                normalized["system"] = system_prompt
+            return normalized
 
         normalized: dict[str, Any] = {}
 
@@ -165,8 +180,8 @@ class Agent(Generic[T]):
         if isinstance(system_prompt, dict):
             if system_prompt.get("append"):
                 normalized["system"] = system_prompt["append"]
-            elif system_prompt.get("preset"):
-                normalized["system"] = f"System preset: {system_prompt['preset']}"
+            if system_prompt.get("preset"):
+                normalized["system_preset"] = system_prompt["preset"]
         elif isinstance(system_prompt, str):
             normalized["system"] = system_prompt
 
@@ -191,6 +206,21 @@ class Agent(Generic[T]):
             normalized["add_dirs"] = [str(p) for p in add_dirs]
 
         return normalized
+
+    def _build_openai_system_prompt(self, normalized_options: dict[str, Any]) -> str:
+        """Build final OpenAI system prompt from normalized options."""
+        explicit_system = str(normalized_options.get("system", "")).strip()
+        preset = str(normalized_options.get("system_preset", "")).strip()
+
+        if preset == "claude_code":
+            if explicit_system:
+                return (
+                    f"{self._CLAUDE_CODE_PRESET_OPENAI_FALLBACK}\n\n"
+                    f"Task-specific instructions:\n{explicit_system}"
+                )
+            return self._CLAUDE_CODE_PRESET_OPENAI_FALLBACK
+
+        return explicit_system
 
     async def _execute_query(self, query: str) -> list[Any]:
         """Execute a single query attempt."""
@@ -284,7 +314,7 @@ class Agent(Generic[T]):
                 api_key=api_key,
             )
 
-            system_text = normalized_options.get("system", "")
+            system_text = self._build_openai_system_prompt(normalized_options)
             user_text = query
 
             format_hint = normalized_options.get("format")

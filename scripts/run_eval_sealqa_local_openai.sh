@@ -11,7 +11,6 @@ MODEL_DEFAULT="deepseek-v3.2"
 DATASET_DEFAULT=".dataset/seal-0.csv"
 OUTPUT_DEFAULT="results/sealqa_eval_local_openai.pkl"
 MAX_CONCURRENT_DEFAULT="1"
-NUM_SAMPLES_DEFAULT="2"
 
 OPENAI_BASE_URL="${OPENAI_BASE_URL:-$OPENAI_BASE_URL_DEFAULT}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
@@ -19,15 +18,21 @@ MODEL="${MODEL:-$MODEL_DEFAULT}"
 DATASET="${DATASET:-$DATASET_DEFAULT}"
 OUTPUT="${OUTPUT:-$OUTPUT_DEFAULT}"
 MAX_CONCURRENT="${MAX_CONCURRENT:-$MAX_CONCURRENT_DEFAULT}"
-NUM_SAMPLES="${NUM_SAMPLES:-$NUM_SAMPLES_DEFAULT}"
+
+ARGS=(
+  --sdk openai
+  --task sealqa
+  --model "$MODEL"
+  --dataset "$DATASET"
+  --output "$OUTPUT"
+  --max-concurrent "$MAX_CONCURRENT"
+)
+
+# By default, evaluate all samples. Set NUM_SAMPLES to limit.
+if [[ -n "${NUM_SAMPLES:-}" ]]; then
+  ARGS+=(--num-samples "$NUM_SAMPLES")
+fi
 
 OPENAI_BASE_URL="$OPENAI_BASE_URL" \
 OPENAI_API_KEY="$OPENAI_API_KEY" \
-python scripts/run_eval_runner.py \
-  --sdk openai \
-  --task sealqa \
-  --model "$MODEL" \
-  --dataset "$DATASET" \
-  --output "$OUTPUT" \
-  --max-concurrent "$MAX_CONCURRENT" \
-  --num-samples "$NUM_SAMPLES"
+python scripts/run_eval_runner.py "${ARGS[@]}"

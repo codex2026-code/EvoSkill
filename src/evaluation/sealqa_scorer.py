@@ -74,11 +74,24 @@ Just return the letters "A", "B", or "C", with no text around it.
 """.strip()
 import dspy
 
-def score_sealqa(question: str, ground_truth: str, predicted: str) -> float:
+def score_sealqa(
+    question: str,
+    ground_truth: str,
+    predicted: str,
+    *,
+    grader_model: str = "openai/gpt-5-mini",
+    grader_base_url: str | None = None,
+    grader_api_key: str | None = None,
+) -> float:
     """Score a SEAL-QA answer. Returns 0.0 or 1.0.
 
     """
-    lm = dspy.LM("openrouter/openai/gpt-5-mini")
+    lm_kwargs = {}
+    if grader_base_url:
+        lm_kwargs["api_base"] = grader_base_url
+    if grader_api_key:
+        lm_kwargs["api_key"] = grader_api_key
+    lm = dspy.LM(grader_model, **lm_kwargs)
     system_prompt = GRADER_TEMPLATE.format(question=question, target=ground_truth, predicted_answer=predicted)
 
     grader = dspy.ChainOfThought("question:str -> score:str")

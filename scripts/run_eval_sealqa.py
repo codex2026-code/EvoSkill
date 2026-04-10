@@ -2,6 +2,7 @@
 """Run full evaluation on SEAL-QA dataset."""
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -85,10 +86,59 @@ async def main():
         default="claude",
         help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
+    parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=None,
+        help="Override OPENAI_BASE_URL for --sdk openai (e.g., http://host:port/v1)",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="Override OPENAI_API_KEY for --sdk openai",
+    )
+    parser.add_argument(
+        "--grader-model",
+        type=str,
+        default="openai/gpt-5-mini",
+        help="Grader model passed to dspy.LM (default: openai/gpt-5-mini)",
+    )
+    parser.add_argument(
+        "--grader-base-url",
+        type=str,
+        default=None,
+        help="Grader API base URL. Defaults to OPENAI_BASE_URL / --openai-base-url when unset.",
+    )
+    parser.add_argument(
+        "--grader-api-key",
+        type=str,
+        default=None,
+        help="Grader API key. Defaults to OPENAI_API_KEY / --openai-api-key when unset.",
+    )
     args = parser.parse_args()
+
+    if args.sdk == "openai":
+        if args.openai_base_url is not None:
+            os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
+        if args.openai_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = args.openai_api_key.strip()
 
     # Set SDK
     set_sdk(args.sdk)
+
+    effective_openai_base_url = (os.getenv("OPENAI_BASE_URL") or "").strip() or None
+    effective_openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip() or None
+    grader_base_url = (
+        args.grader_base_url.strip()
+        if args.grader_base_url is not None
+        else effective_openai_base_url
+    )
+    grader_api_key = (
+        args.grader_api_key.strip()
+        if args.grader_api_key is not None
+        else effective_openai_api_key
+    )
 
     # Load dataset
     data = pd.read_csv(args.dataset)
@@ -146,7 +196,14 @@ async def main():
     correct = 0
     for r in successful:
         if r.trace and r.trace.output and r.trace.output.final_answer:
-            score = score_sealqa(r.question, str(r.ground_truth), str(r.trace.output.final_answer))
+            score = score_sealqa(
+                r.question,
+                str(r.ground_truth),
+                str(r.trace.output.final_answer),
+                grader_model=args.grader_model,
+                grader_base_url=grader_base_url,
+                grader_api_key=grader_api_key,
+            )
             if score > 0:
                 correct += 1
 

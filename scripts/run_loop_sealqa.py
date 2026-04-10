@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import os
+from functools import partial
 
 import pandas as pd
 
@@ -71,9 +72,24 @@ def stratified_split(
     return train_pools, val_data
 
 
-def _sealqa_scorer(question: str, predicted: str, ground_truth: str) -> float:
+def _sealqa_scorer(
+    question: str,
+    predicted: str,
+    ground_truth: str,
+    *,
+    grader_model: str,
+    grader_base_url: str | None,
+    grader_api_key: str | None,
+) -> float:
     """Wrapper around score_sealqa matching the runner's (question, predicted, ground_truth) signature."""
-    return score_sealqa(question, ground_truth, predicted)
+    return score_sealqa(
+        question,
+        ground_truth,
+        predicted,
+        grader_model=grader_model,
+        grader_base_url=grader_base_url,
+        grader_api_key=grader_api_key,
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,6 +190,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override OPENAI_API_KEY for --sdk openai",
     )
+    parser.add_argument(
+        "--grader-model",
+        type=str,
+        default="openai/gpt-5-mini",
+        help="Grader model passed to dspy.LM (default: openai/gpt-5-mini)",
+    )
+    parser.add_argument(
+        "--grader-base-url",
+        type=str,
+        default=None,
+        help="Grader API base URL. Defaults to OPENAI_BASE_URL / --openai-base-url when unset.",
+    )
+    parser.add_argument(
+        "--grader-api-key",
+        type=str,
+        default=None,
+        help="Grader API key. Defaults to OPENAI_API_KEY / --openai-api-key when unset.",
+    )
     return parser.parse_args()
 
 
@@ -191,6 +225,25 @@ async def main(args: argparse.Namespace):
             print("OpenAI endpoint: <official default>")
 
     set_sdk(args.sdk)
+
+    effective_openai_base_url = (os.getenv("OPENAI_BASE_URL") or "").strip() or None
+    effective_openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip() or None
+    grader_base_url = (
+        args.grader_base_url.strip()
+        if args.grader_base_url is not None
+        else effective_openai_base_url
+    )
+    grader_api_key = (
+        args.grader_api_key.strip()
+        if args.grader_api_key is not None
+        else effective_openai_api_key
+    )
+    sealqa_scorer = partial(
+        _sealqa_scorer,
+        grader_model=args.grader_model,
+        grader_base_url=grader_base_url,
+        grader_api_key=grader_api_key,
+    )
 
     data = pd.read_csv(args.dataset)
 
@@ -237,7 +290,7 @@ async def main(args: argparse.Namespace):
 
     model_info = f", model={args.model}" if args.model else ""
     print(f"Running loop with evolution_mode={args.mode}{model_info}")
-    loop = SelfImprovingLoop(config, agents, manager, train_pools, val_data, scorer=_sealqa_scorer)
+    loop = SelfImprovingLoop(config, agents, manager, train_pools, val_data, scorer=sealqa_scorer)
     result = await loop.run()
 
     print(f"Best: {result.best_program} ({result.best_score:.2%})")

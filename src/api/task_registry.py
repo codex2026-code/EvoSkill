@@ -6,6 +6,7 @@ Eliminates per-task script duplication.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -60,7 +61,17 @@ def _sealqa_scorer(question: str, predicted: str, ground_truth: str) -> float:
     """Wrapper around score_sealqa matching the runner's (question, predicted, ground_truth) signature."""
     from src.evaluation.sealqa_scorer import score_sealqa
 
-    return score_sealqa(question, ground_truth, predicted)
+    grader_model = (os.getenv("SEALQA_GRADER_MODEL") or "openai/gpt-5-mini").strip()
+    grader_base_url = (os.getenv("SEALQA_GRADER_BASE_URL") or os.getenv("OPENAI_BASE_URL") or "").strip() or None
+    grader_api_key = (os.getenv("SEALQA_GRADER_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip() or None
+    return score_sealqa(
+        question,
+        ground_truth,
+        predicted,
+        grader_model=grader_model,
+        grader_base_url=grader_base_url,
+        grader_api_key=grader_api_key,
+    )
 
 
 def _livecodebench_scorer(question: str, predicted: str, ground_truth: str) -> float:

@@ -3,6 +3,7 @@
 
 import argparse
 import asyncio
+import os
 
 import pandas as pd
 
@@ -161,10 +162,34 @@ def parse_args() -> argparse.Namespace:
         default="claude",
         help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
+    parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=None,
+        help="Override OPENAI_BASE_URL for --sdk openai (e.g., http://host:port/v1)",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="Override OPENAI_API_KEY for --sdk openai",
+    )
     return parser.parse_args()
 
 
 async def main(args: argparse.Namespace):
+    if args.sdk == "openai":
+        if args.openai_base_url is not None:
+            os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
+        if args.openai_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = args.openai_api_key.strip()
+
+        effective_base_url = (os.getenv("OPENAI_BASE_URL") or "").strip()
+        if effective_base_url:
+            print(f"OpenAI endpoint: {effective_base_url}")
+        else:
+            print("OpenAI endpoint: <official default>")
+
     set_sdk(args.sdk)
 
     data = pd.read_csv(args.dataset)

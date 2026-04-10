@@ -306,11 +306,13 @@ class Agent(Generic[T]):
                     "OpenAI SDK requires a model. Set --model or OPENAI_MODEL."
                 )
 
-            base_url = os.getenv("OPENAI_BASE_URL")
-            api_key = os.getenv("OPENAI_API_KEY", "")
+            base_url_raw = os.getenv("OPENAI_BASE_URL", "")
+            api_key_raw = os.getenv("OPENAI_API_KEY", "")
+            base_url = base_url_raw.strip() or None
+            api_key = api_key_raw.strip()
 
             client = AsyncOpenAI(
-                base_url=base_url if base_url else None,
+                base_url=base_url,
                 api_key=api_key,
             )
 

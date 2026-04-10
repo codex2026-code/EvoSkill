@@ -103,8 +103,15 @@ def score_sealqa(
     lm_kwargs = {}
     if grader_base_url:
         lm_kwargs["api_base"] = grader_base_url
-    if grader_api_key:
-        lm_kwargs["api_key"] = grader_api_key
+
+    normalized_key = (grader_api_key or "").strip() or None
+    if normalized_key:
+        lm_kwargs["api_key"] = normalized_key
+    elif grader_base_url and _resolve_litellm_model_name(grader_model).startswith("openai/"):
+        # Some OpenAI-compatible gateways do not validate the key, but the
+        # OpenAI Python client still requires a non-empty api_key parameter.
+        lm_kwargs["api_key"] = "DUMMY"
+
     lm = dspy.LM(_resolve_litellm_model_name(grader_model), **lm_kwargs)
     system_prompt = GRADER_TEMPLATE.format(question=question, target=ground_truth, predicted_answer=predicted)
 

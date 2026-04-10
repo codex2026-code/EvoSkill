@@ -213,6 +213,8 @@ def parse_args() -> argparse.Namespace:
 
 async def main(args: argparse.Namespace):
     if args.sdk == "openai":
+        if args.model:
+            os.environ["OPENAI_MODEL"] = args.model.strip()
         if args.openai_base_url is not None:
             os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
         if args.openai_api_key is not None:
@@ -223,6 +225,7 @@ async def main(args: argparse.Namespace):
             print(f"OpenAI endpoint: {effective_base_url}")
         else:
             print("OpenAI endpoint: <official default>")
+        print(f"OpenAI model: {(os.getenv('OPENAI_MODEL') or '').strip() or '<unset>'}")
 
     set_sdk(args.sdk)
 

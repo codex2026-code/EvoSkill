@@ -121,6 +121,13 @@ class Agent(Generic[T]):
         "and keep outputs concise and directly actionable."
     )
 
+    @staticmethod
+    def _string_or_unknown(value: Any) -> str:
+        """Return a non-empty string value, falling back to 'unknown'."""
+        if isinstance(value, str) and value:
+            return value
+        return "unknown"
+
     def __init__(self, options: OptionsProvider, response_model: Type[T]):
         self._options = options
         self.response_model = response_model
@@ -442,9 +449,9 @@ class Agent(Generic[T]):
                 )
 
             return AgentTrace(
-                uuid=first.data.get("uuid"),
-                session_id=last.session_id,
-                model=first.data.get("model"),
+                uuid=self._string_or_unknown(first.data.get("uuid")),
+                session_id=self._string_or_unknown(last.session_id),
+                model=self._string_or_unknown(first.data.get("model")),
                 tools=first.data.get("tools", []),
                 duration_ms=last.duration_ms,
                 total_cost_usd=last.total_cost_usd,
@@ -549,8 +556,8 @@ class Agent(Generic[T]):
                 usage_payload = completion.usage.model_dump()
 
             return AgentTrace(
-                uuid=getattr(completion, "id", "unknown"),
-                session_id=getattr(completion, "id", "unknown"),
+                uuid=self._string_or_unknown(getattr(completion, "id", None)),
+                session_id=self._string_or_unknown(getattr(completion, "id", None)),
                 model=model_name,
                 tools=tools,
                 duration_ms=0,

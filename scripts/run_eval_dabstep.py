@@ -2,6 +2,7 @@
 """Run full evaluation on Dabstep dataset."""
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -103,10 +104,36 @@ async def main():
         default="claude",
         help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
+    parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=None,
+        help="Override OPENAI_BASE_URL for --sdk openai (e.g., http://host:port/v1)",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="Override OPENAI_API_KEY for --sdk openai",
+    )
     args = parser.parse_args()
 
     # Set SDK
     set_sdk(args.sdk)
+    if args.sdk == "openai":
+        if args.model:
+            os.environ["OPENAI_MODEL"] = args.model.strip()
+        if args.openai_base_url is not None:
+            os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
+        if args.openai_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = args.openai_api_key.strip()
+
+        effective_base_url = (os.getenv("OPENAI_BASE_URL") or "").strip()
+        if effective_base_url:
+            print(f"OpenAI endpoint: {effective_base_url}")
+        else:
+            print("OpenAI endpoint: https://api.openai.com/v1 (default)")
+        print(f"OpenAI model: {(os.getenv('OPENAI_MODEL') or '').strip() or '<unset>'}")
 
     # Load dataset
     data = pd.read_csv(args.dataset)

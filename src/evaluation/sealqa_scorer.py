@@ -74,6 +74,20 @@ Just return the letters "A", "B", or "C", with no text around it.
 """.strip()
 import dspy
 
+
+def _resolve_litellm_model_name(model: str) -> str:
+    """Normalize shorthand model names to LiteLLM provider/model format.
+
+    LiteLLM requires provider-qualified names (e.g. ``openai/gpt-5-mini``).
+    For OpenAI-compatible endpoints, users often pass a plain model id
+    (e.g. ``minimax2.5``). In that case we default to ``openai/<model>``.
+    """
+    normalized = model.strip()
+    if "/" in normalized:
+        return normalized
+    return f"openai/{normalized}"
+
+
 def score_sealqa(
     question: str,
     ground_truth: str,
@@ -91,7 +105,7 @@ def score_sealqa(
         lm_kwargs["api_base"] = grader_base_url
     if grader_api_key:
         lm_kwargs["api_key"] = grader_api_key
-    lm = dspy.LM(grader_model, **lm_kwargs)
+    lm = dspy.LM(_resolve_litellm_model_name(grader_model), **lm_kwargs)
     system_prompt = GRADER_TEMPLATE.format(question=question, target=ground_truth, predicted_answer=predicted)
 
     grader = dspy.ChainOfThought("question:str -> score:str")

@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import json
+import logging
 import os
 from functools import partial
 from pathlib import Path
@@ -216,10 +217,33 @@ def parse_args() -> argparse.Namespace:
         default=".claude/sealqa_iteration_log.json",
         help="Path to write structured per-iteration evolution logs as JSON.",
     )
+    parser.add_argument(
+        "--debug-eval",
+        action="store_true",
+        help="Enable per-question evaluation heartbeat logs.",
+    )
+    parser.add_argument(
+        "--debug-openai",
+        action="store_true",
+        help="Enable OpenAI tool-calling round logs (works with --sdk openai).",
+    )
+    parser.add_argument(
+        "--eval-heartbeat-sec",
+        type=int,
+        default=30,
+        help="Heartbeat interval (seconds) for --debug-eval logs (default: 30).",
+    )
     return parser.parse_args()
 
 
 async def main(args: argparse.Namespace):
+    if args.debug_eval:
+        os.environ["EVOSKILL_EVAL_DEBUG"] = "1"
+        os.environ["EVOSKILL_EVAL_HEARTBEAT_SEC"] = str(max(5, args.eval_heartbeat_sec))
+    if args.debug_openai:
+        os.environ["EVOSKILL_OPENAI_DEBUG"] = "1"
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+
     if args.sdk == "openai":
         if args.model:
             os.environ["OPENAI_MODEL"] = args.model.strip()

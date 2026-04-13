@@ -99,6 +99,16 @@ class LoopResult:
     history: list[dict]
 
 
+@dataclass
+class MutationResult:
+    """Structured mutation result for richer per-iteration recording."""
+
+    child_name: str
+    proposal: str
+    justification: str
+    evolution_trace: dict
+
+
 class SelfImprovingLoop:
     """Self-improving agent loop with git-based versioning.
 
@@ -201,6 +211,18 @@ class SelfImprovingLoop:
         """Delete checkpoint file if it exists."""
         if self._checkpoint_path.exists():
             self._checkpoint_path.unlink()
+
+    @staticmethod
+    def _serialize_trace(trace: AgentTrace | None) -> dict | None:
+        """Serialize an agent trace into JSON-friendly structure."""
+        if trace is None:
+            return None
+        return {
+            "parse_error": trace.parse_error,
+            "summary": trace.summarize(head_chars=4_000, tail_chars=2_000),
+            "output": trace.output.model_dump() if trace.output is not None else None,
+            "result": str(trace.result) if trace.result else "",
+        }
 
     async def run(self) -> LoopResult:
         """Run the full self-improving loop.
@@ -362,15 +384,26 @@ class SelfImprovingLoop:
             if mutation_result is None:
                 iteration_record["proposal"] = None
                 iteration_record["child"] = None
+                iteration_record["evolution_trace"] = {
+                    "skill": None,
+                    "skill_proposer": None,
+                    "prompt_proposer": None,
+                    "skill_generator": None,
+                    "prompt_generator": None,
+                    "fail_feedback": None,
+                }
                 iteration_record["outcome"] = "mutation_failed"
                 no_improvement_count += 1
             else:
-                child_name, proposal, justification = mutation_result
+                child_name = mutation_result.child_name
+                proposal = mutation_result.proposal
+                justification = mutation_result.justification
                 iteration_record["proposal"] = {
                     "proposal": proposal,
                     "justification": justification,
                 }
                 iteration_record["child"] = {"name": child_name}
+                evolution_trace = mutation_result.evolution_trace
 
                 # Evaluate child
                 _log("", f"  -> Evaluating {child_name}...")
@@ -406,7 +439,18 @@ class SelfImprovingLoop:
                     parent_score=parent_score,
                     active_skills=active_skills,
                 )
+                evolution_trace["fail_feedback"] = {
+                    "feedback_file": str(self._feedback_path),
+                    "child_name": child_name,
+                    "proposal": proposal,
+                    "justification": justification,
+                    "outcome": outcome,
+                    "score": child_score,
+                    "parent_score": parent_score,
+                    "active_skills": active_skills,
+                }
                 iteration_record["active_skills"] = active_skills
+                iteration_record["evolution_trace"] = evolution_trace
 
             # Check early stopping
             if no_improvement_count >= self.config.no_improvement_limit:
@@ -501,7 +545,7 @@ class SelfImprovingLoop:
         failures: list[tuple[AgentTrace[AgentResponse], str, str, str]],
         iteration: int,
         truncation_level: int = 0,
-    ) -> tuple[str, str, str] | None:
+    ) -> MutationResult | None:
         """Run proposer and generator to create a mutation based on multiple failures.
 
         Args:
@@ -522,8 +566,26 @@ class SelfImprovingLoop:
         feedback_history = read_feedback_history(self._feedback_path)
         proposer_query = build_proposer_query(failures, feedback_history, evolution_mode, truncation_level)
 
+        evolution_trace = {
+            "skill": None,
+            "skill_proposer": None,
+            "prompt_proposer": None,
+            "skill_generator": None,
+            "prompt_generator": None,
+            "fail_feedback": None,
+            "meta": {
+                "evolution_mode": evolution_mode,
+                "truncation_level": truncation_level,
+                "failure_count": len(failures),
+            },
+        }
+
         if evolution_mode == "skill_only":
             proposer_trace = await self.agents.skill_proposer.run(proposer_query)
+            evolution_trace["skill_proposer"] = {
+                "query": proposer_query,
+                "trace": self._serialize_trace(proposer_trace),
+            }
 
             if proposer_trace.output is None:
                 _log("", f"  [WARN] Skill proposer failed: {proposer_trace.parse_error}")
@@ -561,11 +623,25 @@ and modify it to add these capabilities. Preserve all existing content that is s
                 skill_query = build_skill_query_from_skill_proposer(proposer_trace)
 
             skill_trace = await self.agents.skill_generator.run(skill_query)
+            evolution_trace["skill"] = {
+                "action": action_type,
+                "target_skill": target_skill,
+                "proposal": proposed,
+                "justification": justification,
+            }
+            evolution_trace["skill_generator"] = {
+                "query": skill_query,
+                "trace": self._serialize_trace(skill_trace),
+            }
             if skill_trace.output:
                 pass  # Skill is written to file by the generator
 
         else:  # prompt_only
             proposer_trace = await self.agents.prompt_proposer.run(proposer_query)
+            evolution_trace["prompt_proposer"] = {
+                "query": proposer_query,
+                "trace": self._serialize_trace(proposer_trace),
+            }
 
             if proposer_trace.output is None:
                 _log("", f"  [WARN] Prompt proposer failed: {proposer_trace.parse_error}")
@@ -588,6 +664,10 @@ and modify it to add these capabilities. Preserve all existing content that is s
                 proposer_trace, original_prompt
             )
             prompt_trace = await self.agents.prompt_generator.run(prompt_query)
+            evolution_trace["prompt_generator"] = {
+                "query": prompt_query,
+                "trace": self._serialize_trace(prompt_trace),
+            }
             if prompt_trace.output:
                 update_prompt_file(
                     self._prompt_path, prompt_trace.output.optimized_prompt
@@ -597,14 +677,19 @@ and modify it to add these capabilities. Preserve all existing content that is s
         self.manager.commit(f"{child_name}: {proposed[:50]}")
 
         # Return mutation info (feedback will be written by caller with outcome)
-        return (child_name, proposed, justification)
+        return MutationResult(
+            child_name=child_name,
+            proposal=proposed,
+            justification=justification,
+            evolution_trace=evolution_trace,
+        )
 
     async def _mutate_with_fallback(
         self,
         parent: str,
         failures: list[tuple[AgentTrace[AgentResponse], str, str, str]],
         iteration: int,
-    ) -> tuple[str, str, str] | None:
+    ) -> MutationResult | None:
         """Try progressive truncation levels, then single-failure fallback.
 
         Args:

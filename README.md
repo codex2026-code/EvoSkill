@@ -275,6 +275,8 @@ python scripts/run_loop_sealqa.py --mode skill_only --max-iterations 20
 | `--continue` | Resume from existing frontier | off |
 | `--no-cache` | Disable run caching | off |
 | `--model` | Base agent model (`opus`, `sonnet`, `haiku`) | `opus` |
+| `--iteration-log-json` | Output path for structured per-iteration JSON logs | `.claude/iteration_log.json` |
+| `--debug-openai` | Enable OpenAI tool-calling round logs (for `--sdk openai`) | off |
 
 ---
 

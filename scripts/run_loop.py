@@ -3,6 +3,8 @@
 
 import asyncio
 import json
+import logging
+import os
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -94,6 +96,10 @@ class LoopSettings(BaseSettings):
         default=".claude/iteration_log.json",
         description="Path to write structured per-iteration evolution logs as JSON",
     )
+    debug_openai: bool = Field(
+        default=False,
+        description="Enable OpenAI tool-calling round logs (works with --sdk openai)",
+    )
 
 
 def stratified_split(
@@ -142,6 +148,13 @@ def stratified_split(
 
 
 async def main(settings: LoopSettings):
+    if settings.debug_openai:
+        os.environ["EVOSKILL_OPENAI_DEBUG"] = "1"
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+        )
+
     # Set SDK based on CLI argument
     set_sdk(settings.sdk)
 

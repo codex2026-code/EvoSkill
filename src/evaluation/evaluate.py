@@ -1,4 +1,7 @@
 import asyncio
+import os
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
@@ -40,19 +43,41 @@ async def evaluate_agent_parallel(
         List of EvalResult containing question, ground_truth, and trace
     """
     semaphore = asyncio.Semaphore(max_concurrent)
+    debug_eval = os.getenv("EVOSKILL_EVAL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    heartbeat_sec = int(os.getenv("EVOSKILL_EVAL_HEARTBEAT_SEC", "30"))
+    heartbeat_sec = max(5, heartbeat_sec)
 
     async def run_one(question: str, ground_truth: str) -> EvalResult[T]:
         async with semaphore:
+            started_at = time.monotonic()
+            if debug_eval:
+                print(f"[EVAL][START] q='{question[:80]}'")
+
+            heartbeat_task: asyncio.Task[None] | None = None
+
+            async def _heartbeat() -> None:
+                while True:
+                    await asyncio.sleep(heartbeat_sec)
+                    elapsed = time.monotonic() - started_at
+                    print(f"[EVAL][WAIT] q='{question[:60]}' elapsed={elapsed:.1f}s")
+
             try:
                 async with asyncio.timeout(1020):  # 17-minute hard limit per eval
                     # Check cache first
                     trace = None
                     if cache is not None:
                         trace = cache.get(question, agent.response_model)
+                        if debug_eval and trace is not None:
+                            print(f"[EVAL][CACHE_HIT] q='{question[:80]}'")
 
                     # Cache miss - run agent
                     if trace is None:
+                        if debug_eval:
+                            heartbeat_task = asyncio.create_task(_heartbeat())
+                            print(f"[EVAL][RUN] q='{question[:80]}' invoking agent.run")
                         trace = await agent.run(question)
+                        if debug_eval:
+                            print(f"[EVAL][RUN_DONE] q='{question[:80]}'")
                         # Store in cache
                         if cache is not None:
                             cache.set(question, trace)
@@ -63,6 +88,15 @@ async def evaluate_agent_parallel(
             except Exception as e:
                 print(f"Failed on question: {question[:50]}... Error: {e}")
                 trace = None
+            finally:
+                if heartbeat_task is not None:
+                    heartbeat_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await heartbeat_task
+                if debug_eval:
+                    elapsed = time.monotonic() - started_at
+                    outcome = "ok" if trace is not None else "none"
+                    print(f"[EVAL][END] q='{question[:80]}' elapsed={elapsed:.1f}s trace={outcome}")
             return EvalResult(question=question, ground_truth=ground_truth, trace=trace)
 
     tasks = [run_one(q, gt) for q, gt in items]

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel, ValidationError
@@ -367,17 +368,34 @@ class Agent(Generic[T]):
 
             runtime = OpenAILocalToolRuntime.from_options(normalized_options)
             tool_defs = runtime.get_openai_tools()
+            debug_openai_tools = os.getenv("EVOSKILL_OPENAI_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
 
             max_tool_rounds = 24
             completion = None
-            for _ in range(max_tool_rounds):
+            query_started = time.monotonic()
+            for round_idx in range(1, max_tool_rounds + 1):
                 messages = self._compact_openai_messages(messages)
+                round_started = time.monotonic()
+                if debug_openai_tools:
+                    logger.info(
+                        "[OPENAI][ROUND_START] round=%s/%s messages=%s model=%s",
+                        round_idx,
+                        max_tool_rounds,
+                        len(messages),
+                        model_name,
+                    )
                 completion = await client.chat.completions.create(
                     model=model_name,
                     messages=messages,
                     tools=tool_defs if tool_defs else None,
                     tool_choice="auto" if tool_defs else None,
                 )
+                if debug_openai_tools:
+                    logger.info(
+                        "[OPENAI][ROUND_DONE] round=%s latency=%.2fs",
+                        round_idx,
+                        time.monotonic() - round_started,
+                    )
                 choice = completion.choices[0] if completion.choices else None
                 msg = choice.message if choice else None
                 tool_calls = getattr(msg, "tool_calls", None) if msg else None
@@ -385,6 +403,13 @@ class Agent(Generic[T]):
                     break
 
                 if tool_calls:
+                    if debug_openai_tools:
+                        logger.info(
+                            "[OPENAI][TOOL_CALLS] round=%s count=%s names=%s",
+                            round_idx,
+                            len(tool_calls),
+                            [tc.function.name for tc in tool_calls],
+                        )
                     messages.append(
                         {
                             "role": "assistant",
@@ -404,9 +429,18 @@ class Agent(Generic[T]):
                     )
 
                     for tc in tool_calls:
+                        tool_started = time.monotonic()
                         tool_output = await runtime.execute(
                             tc.function.name, tc.function.arguments
                         )
+                        if debug_openai_tools:
+                            logger.info(
+                                "[OPENAI][TOOL_DONE] round=%s name=%s latency=%.2fs output_chars=%s",
+                                round_idx,
+                                tc.function.name,
+                                time.monotonic() - tool_started,
+                                len(tool_output),
+                            )
                         messages.append(
                             {
                                 "role": "tool",
@@ -421,6 +455,12 @@ class Agent(Generic[T]):
 
             if completion is None:
                 raise RuntimeError("OpenAI completion failed to return a response")
+            if debug_openai_tools:
+                logger.info(
+                    "[OPENAI][QUERY_DONE] total_latency=%.2fs rounds=%s",
+                    time.monotonic() - query_started,
+                    round_idx,
+                )
 
             return [completion]
 

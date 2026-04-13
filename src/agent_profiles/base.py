@@ -293,7 +293,6 @@ class Agent(Generic[T]):
 
             # Start opencode server if needed
             import subprocess
-            import time
 
             try:
                 # Quick check if server is running

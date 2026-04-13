@@ -26,10 +26,12 @@ def build_proposer_query(
         Formatted query string for the proposer.
     """
     # Truncation level settings: (head_chars, tail_chars, feedback_lines, max_failures)
+    # Keep level-0 conservative because OpenAI-compatible endpoints may hard-fail
+    # far below theoretical context windows when tool traces are verbose.
     TRUNCATION_SETTINGS = [
-        (60_000, 60_000, None, None),    # Level 0: full
-        (20_000, 10_000, 20, 3),         # Level 1: moderate
-        (5_000, 2_000, 5, 2),            # Level 2: aggressive
+        (12_000, 6_000, 60, 3),          # Level 0: balanced
+        (6_000, 2_000, 20, 2),           # Level 1: moderate
+        (2_500, 1_000, 8, 1),            # Level 2: aggressive
     ]
     head_chars, tail_chars, feedback_lines, max_failures = TRUNCATION_SETTINGS[
         min(truncation_level, len(TRUNCATION_SETTINGS) - 1)
@@ -82,7 +84,7 @@ Ground Truth: {ground_truth}
 
     failures_text = "\n".join(failure_sections)
 
-    return f"""## Existing Skills (check before proposing new ones)
+    query = f"""## Existing Skills (check before proposing new ones)
 {skills_list}
 
 ## Previous Attempts Feedback
@@ -100,6 +102,20 @@ Analyze the patterns across these failures to identify a GENERAL improvement, no
 3. If no → propose a NEW skill (action="create")
 4. Reference any related DISCARDED iterations and explain how your proposal differs
 5. Identify what COMMON pattern or capability gap caused these failures across categories"""
+
+    # Final hard cap as a last-resort guardrail against massive traces.
+    max_query_chars = 180_000
+    if len(query) > max_query_chars:
+        keep_head = 120_000
+        keep_tail = 40_000
+        omitted = len(query) - keep_head - keep_tail
+        query = (
+            f"{query[:keep_head]}\n\n"
+            f"[... proposer query truncated, omitted {omitted:,} characters ...]\n\n"
+            f"{query[-keep_tail:]}"
+        )
+
+    return query
 
 
 def build_skill_query(proposer_trace: "AgentTrace[ProposerResponse]") -> str:

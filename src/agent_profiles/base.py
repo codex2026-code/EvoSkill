@@ -125,6 +125,19 @@ class Agent(Generic[T]):
     OPENAI_TOOL_OUTPUT_CHAR_CAP = 30_000
 
     @staticmethod
+    def _int_env(name: str, default: int, minimum: int = 1) -> int:
+        """Read a positive integer from env with safe fallback."""
+        raw = os.getenv(name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            logger.warning("Invalid %s=%r; using default %s", name, raw, default)
+            return default
+        return max(minimum, value)
+
+    @staticmethod
     def _string_or_unknown(value: Any) -> str:
         """Return a non-empty string value, falling back to 'unknown'."""
         if isinstance(value, str) and value:
@@ -344,9 +357,13 @@ class Agent(Generic[T]):
             base_url = base_url_raw.strip() or None
             api_key = api_key_raw.strip()
 
+            http_timeout_sec = self._int_env("EVOSKILL_OPENAI_HTTP_TIMEOUT_SEC", 900)
+            http_max_retries = self._int_env("EVOSKILL_OPENAI_HTTP_MAX_RETRIES", 1, 0)
             client = AsyncOpenAI(
                 base_url=base_url,
                 api_key=api_key,
+                timeout=http_timeout_sec,
+                max_retries=http_max_retries,
             )
 
             system_text = self._build_openai_system_prompt(normalized_options)

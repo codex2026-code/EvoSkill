@@ -1,4 +1,5 @@
 import asyncio
+import os
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +92,9 @@ async def evaluate_full(
 
     semaphore = asyncio.Semaphore(max_concurrent)
     lock = asyncio.Lock()
+    eval_timeout_sec = int(os.getenv("EVOSKILL_EVAL_TIMEOUT_SEC", "1800"))
+    eval_timeout_sec = max(60, eval_timeout_sec)
+    eval_timeout_min = eval_timeout_sec // 60
 
     async def run_one(
         index: int, question: str, ground_truth: str
@@ -99,7 +103,7 @@ async def evaluate_full(
             error = None
             trace = None
             try:
-                async with asyncio.timeout(1020):  # 17-minute hard limit per eval
+                async with asyncio.timeout(eval_timeout_sec):
                     if cache is not None:
                         trace = cache.get(question, agent.response_model)
 
@@ -108,7 +112,7 @@ async def evaluate_full(
                         if cache is not None:
                             cache.set(question, trace)
             except asyncio.TimeoutError:
-                error = "TimeoutError: Eval timed out after 17 minutes"
+                error = f"TimeoutError: Eval timed out after {eval_timeout_min} minutes"
                 print(f"[TIMEOUT] Index {index}: {question[:50]}...")
             except Exception as e:
                 error = f"{type(e).__name__}: {str(e)}"

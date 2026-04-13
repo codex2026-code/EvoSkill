@@ -46,6 +46,9 @@ async def evaluate_agent_parallel(
     debug_eval = os.getenv("EVOSKILL_EVAL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
     heartbeat_sec = int(os.getenv("EVOSKILL_EVAL_HEARTBEAT_SEC", "30"))
     heartbeat_sec = max(5, heartbeat_sec)
+    eval_timeout_sec = int(os.getenv("EVOSKILL_EVAL_TIMEOUT_SEC", "1800"))
+    eval_timeout_sec = max(60, eval_timeout_sec)
+    eval_timeout_min = eval_timeout_sec // 60
 
     async def run_one(question: str, ground_truth: str) -> EvalResult[T]:
         async with semaphore:
@@ -62,7 +65,7 @@ async def evaluate_agent_parallel(
                     print(f"[EVAL][WAIT] q='{question[:60]}' elapsed={elapsed:.1f}s")
 
             try:
-                async with asyncio.timeout(1020):  # 17-minute hard limit per eval
+                async with asyncio.timeout(eval_timeout_sec):
                     # Check cache first
                     trace = None
                     if cache is not None:
@@ -83,7 +86,7 @@ async def evaluate_agent_parallel(
                             cache.set(question, trace)
 
             except asyncio.TimeoutError:
-                print(f"Eval timed out (17min) for: {question[:50]}...")
+                print(f"Eval timed out ({eval_timeout_min}min) for: {question[:50]}...")
                 trace = None
             except Exception as e:
                 print(f"Failed on question: {question[:50]}... Error: {e}")

@@ -21,8 +21,8 @@ def get_dabstep_agent_options(model: str | None = None, data_dir: str | None = N
         model: Model to use (e.g., "opus", "sonnet"). If None, uses SDK default.
         data_dir: Path to the data directory to add. If None, no extra dirs are added.
     """
-    # Read prompt from disk
-    prompt_text = PROMPT_FILE.read_text().strip()
+    # Read prompt from disk (optional file)
+    prompt_text = PROMPT_FILE.read_text().strip() if PROMPT_FILE.exists() else ""
 
     system_prompt = {
         "type": "preset",

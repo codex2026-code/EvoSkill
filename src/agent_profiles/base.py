@@ -120,6 +120,8 @@ class Agent(Generic[T]):
         "Use tools when needed for accurate results, prefer deterministic changes, "
         "and keep outputs concise and directly actionable."
     )
+    OPENAI_MAX_MESSAGE_CHARS = 450_000
+    OPENAI_TOOL_OUTPUT_CHAR_CAP = 30_000
 
     @staticmethod
     def _string_or_unknown(value: Any) -> str:
@@ -228,6 +230,30 @@ class Agent(Generic[T]):
             return self._CLAUDE_CODE_PRESET_OPENAI_FALLBACK
 
         return explicit_system
+
+    def _compact_openai_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Reduce message payload size to avoid oversized context errors."""
+        compacted: list[dict[str, Any]] = []
+        for msg in messages:
+            item = dict(msg)
+            content = item.get("content")
+            if isinstance(content, str) and item.get("role") == "tool":
+                if len(content) > self.OPENAI_TOOL_OUTPUT_CHAR_CAP:
+                    omitted = len(content) - self.OPENAI_TOOL_OUTPUT_CHAR_CAP
+                    item["content"] = (
+                        f"{content[:self.OPENAI_TOOL_OUTPUT_CHAR_CAP]}\n"
+                        f"\n[... tool output truncated, omitted {omitted:,} characters ...]"
+                    )
+            compacted.append(item)
+
+        def total_chars(payload: list[dict[str, Any]]) -> int:
+            return sum(len(str(m.get("content", ""))) for m in payload)
+
+        # Preserve system + newest messages, drop oldest non-system messages first.
+        while len(compacted) > 2 and total_chars(compacted) > self.OPENAI_MAX_MESSAGE_CHARS:
+            drop_idx = 1 if compacted and compacted[0].get("role") == "system" else 0
+            compacted.pop(drop_idx)
+        return compacted
 
     async def _execute_query(self, query: str) -> list[Any]:
         """Execute a single query attempt."""
@@ -345,6 +371,7 @@ class Agent(Generic[T]):
             max_tool_rounds = 24
             completion = None
             for _ in range(max_tool_rounds):
+                messages = self._compact_openai_messages(messages)
                 completion = await client.chat.completions.create(
                     model=model_name,
                     messages=messages,

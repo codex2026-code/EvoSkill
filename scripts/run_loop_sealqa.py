@@ -3,8 +3,10 @@
 
 import argparse
 import asyncio
+import json
 import os
 from functools import partial
+from pathlib import Path
 
 import pandas as pd
 
@@ -208,6 +210,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Grader API key. Defaults to OPENAI_API_KEY / --openai-api-key when unset.",
     )
+    parser.add_argument(
+        "--iteration-log-json",
+        type=str,
+        default=".claude/sealqa_iteration_log.json",
+        help="Path to write structured per-iteration evolution logs as JSON.",
+    )
     return parser.parse_args()
 
 
@@ -295,6 +303,24 @@ async def main(args: argparse.Namespace):
     print(f"Running loop with evolution_mode={args.mode}{model_info}")
     loop = SelfImprovingLoop(config, agents, manager, train_pools, val_data, scorer=sealqa_scorer)
     result = await loop.run()
+
+    log_path = Path(args.iteration_log_json)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_payload = {
+        "dataset": args.dataset,
+        "mode": args.mode,
+        "model": args.model,
+        "max_iterations": args.max_iterations,
+        "frontier_size": args.frontier_size,
+        "no_improvement_limit": args.no_improvement_limit,
+        "failure_samples": args.failure_samples,
+        "history": result.history,
+        "best_program": result.best_program,
+        "best_score": result.best_score,
+        "frontier": result.frontier,
+    }
+    log_path.write_text(json.dumps(log_payload, ensure_ascii=False, indent=2))
+    print(f"Iteration log JSON saved to: {log_path}")
 
     print(f"Best: {result.best_program} ({result.best_score:.2%})")
     print(f"Frontier: {result.frontier}")

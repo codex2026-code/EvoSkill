@@ -5,20 +5,6 @@ import asyncio
 import os
 from pathlib import Path
 
-import pandas as pd
-
-from src.agent_profiles import (
-    Agent,
-    dabstep_agent_options,
-    make_dabstep_agent_options,
-    set_sdk,
-)
-from src.cache import CacheConfig, RunCache
-from src.evaluation.eval_full import evaluate_full, load_results
-from src.evaluation.dabstep_scorer import question_scorer
-from src.schemas import AgentResponse
-
-
 PROMPT = """You are an expert data analyst and you will answer factoid questions by loading and referencing the files/documents listed below.
 You have these files available:
 {context_files}
@@ -30,9 +16,17 @@ Here are the guidelines you must follow when answering the question above:
 {guidelines}
 """
 
+SCRIPT_VERSION = "2026-04-13"
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Evaluate agent on Dabstep dataset")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {SCRIPT_VERSION}",
+        help="Show script version and exit",
+    )
     parser.add_argument(
         "--dataset",
         "-d",
@@ -117,6 +111,14 @@ async def main():
         help="Override OPENAI_API_KEY for --sdk openai",
     )
     args = parser.parse_args()
+
+    # Delay heavy/optional imports so --help works even when runtime deps are missing.
+    import pandas as pd
+    from src.agent_profiles import Agent, make_dabstep_agent_options, set_sdk
+    from src.cache import CacheConfig, RunCache
+    from src.evaluation.eval_full import evaluate_full, load_results
+    from src.evaluation.dabstep_scorer import question_scorer
+    from src.schemas import AgentResponse
 
     # Set SDK
     set_sdk(args.sdk)

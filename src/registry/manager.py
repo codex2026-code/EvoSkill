@@ -431,8 +431,12 @@ class ProgramManager:
             self._run_git(["stash", "pop"], check=False)
 
     def _git_checkout_new(self, branch: str) -> None:
-        """Create and checkout a new branch."""
-        self._run_git(["checkout", "-b", branch])
+        """Create/reset and checkout a branch from current HEAD.
+
+        Uses ``git checkout -B`` so repeated runs can safely reuse the same
+        program branch name without failing when the branch already exists.
+        """
+        self._run_git(["checkout", "-B", branch])
 
     def _git_current_branch(self) -> str:
         """Get current branch name."""

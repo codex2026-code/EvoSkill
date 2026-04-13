@@ -2,6 +2,8 @@
 """Run self-improving agent loop."""
 
 import asyncio
+import json
+from pathlib import Path
 from typing import Literal, Optional
 
 import pandas as pd
@@ -87,6 +89,10 @@ class LoopSettings(BaseSettings):
     sdk: Literal["claude", "opencode", "openai"] = Field(
         default="claude",
         description="SDK to use: 'claude', 'opencode', or 'openai'",
+    )
+    iteration_log_json: str = Field(
+        default=".claude/iteration_log.json",
+        description="Path to write structured per-iteration evolution logs as JSON",
     )
 
 
@@ -195,6 +201,24 @@ async def main(settings: LoopSettings):
     print(f"Running loop with evolution_mode={settings.mode}{model_info}")
     loop = SelfImprovingLoop(config, agents, manager, train_pools, val_data)
     result = await loop.run()
+
+    log_path = Path(settings.iteration_log_json)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_payload = {
+        "dataset": settings.dataset,
+        "mode": settings.mode,
+        "model": settings.model,
+        "max_iterations": settings.max_iterations,
+        "frontier_size": settings.frontier_size,
+        "no_improvement_limit": settings.no_improvement_limit,
+        "failure_samples": settings.failure_samples,
+        "history": result.history,
+        "best_program": result.best_program,
+        "best_score": result.best_score,
+        "frontier": result.frontier,
+    }
+    log_path.write_text(json.dumps(log_payload, ensure_ascii=False, indent=2))
+    print(f"Iteration log JSON saved to: {log_path}")
 
     print(f"Best: {result.best_program} ({result.best_score:.2%})")
     print(f"Frontier: {result.frontier}")

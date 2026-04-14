@@ -350,18 +350,27 @@ class OpenAILocalToolRuntime:
         command = args["command"]
         timeout_sec = int(args.get("timeout_sec", 60))
 
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            cwd=str(self.cwd),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        proc: asyncio.subprocess.Process | None = None
         try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(self.cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                await proc.wait()
             return _safe_json_dump({"ok": False, "error": f"Command timed out after {timeout_sec}s"})
+        except asyncio.CancelledError:
+            # Critical cleanup path: outer caller cancellation (e.g., task timeout) can
+            # otherwise leave subprocess transports pending until interpreter shutdown.
+            if proc is not None and proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+            raise
         return _safe_json_dump(
             {
                 "ok": True,

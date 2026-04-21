@@ -78,11 +78,14 @@ RUN_TAG=demo_001 bash scripts/repro_templates/livecodebench/run_iter.sh
 - `RUN_TAG`（默认 UTC 时间戳）
 - `SDK`（默认 `claude`）
 - `MODEL`（默认 `claude-opus-4-5-20251101`）
+- `OPENAI_BASE_URL`（当 `SDK=openai` 时透传到 loop/eval；支持自部署 OpenAI 兼容网关）
+- `OPENAI_API_KEY`（当 `SDK=openai` 时透传）
 - `MAX_ITERATIONS`、`FRONTIER_SIZE`、`CONCURRENCY`、`FAILURE_SAMPLES`
 - `EVAL_MAX_CONCURRENT`
 
 SEAL-QA 统计额外支持：
 - `GRADER_MODEL`（默认 `openai/gpt-5-mini`）
+- `GRADER_BASE_URL`、`GRADER_API_KEY`（未设置时会回退到 `OPENAI_BASE_URL`/`OPENAI_API_KEY`）
 
 ## 统计汇总说明
 

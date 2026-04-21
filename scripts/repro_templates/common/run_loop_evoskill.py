@@ -63,6 +63,18 @@ def parse_args() -> argparse.Namespace:
         default="claude",
     )
     parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=None,
+        help="Override OPENAI_BASE_URL for --sdk openai (e.g., http://host:port/v1).",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="Override OPENAI_API_KEY for --sdk openai.",
+    )
+    parser.add_argument(
         "--loop-summary-json",
         type=Path,
         required=True,
@@ -76,6 +88,14 @@ async def main() -> None:
 
     # Keep skills profile isolated per experiment branch.
     os.environ["EVOSKILL_SKILLS_DIR"] = args.skills_dir
+
+    if args.sdk == "openai":
+        if args.model:
+            os.environ["OPENAI_MODEL"] = args.model.strip()
+        if args.openai_base_url is not None:
+            os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
+        if args.openai_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = args.openai_api_key.strip()
 
     # Follow official SDK switch path.
     set_sdk(args.sdk)
@@ -106,6 +126,7 @@ async def main() -> None:
         "mode": args.mode,
         "model": args.model,
         "sdk": args.sdk,
+        "openai_base_url": args.openai_base_url,
         "max_iterations": args.max_iterations,
         "frontier_size": args.frontier_size,
         "no_improvement_limit": args.no_improvement_limit,

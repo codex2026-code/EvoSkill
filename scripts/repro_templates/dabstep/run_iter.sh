@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
+cd "$REPO_ROOT"
+
 # Iterative group (DabStep): EvoSkill API loop -> run_eval_dabstep.py
 
 EXP_ROOT=${EXP_ROOT:-experiments/repro_3bench}

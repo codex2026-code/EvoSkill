@@ -49,6 +49,8 @@ experiments/repro_3bench/<RUN_TAG>/summary/all_runs.csv
 
 ## 如何运行
 
+> 说明：模板脚本会自动切换到仓库根目录执行，因此可从任意当前工作目录调用，无需手动调整目录层次。
+
 ### 1) 一次跑完全部 3x2 配置
 
 ```bash

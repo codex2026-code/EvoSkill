@@ -58,6 +58,7 @@ from src.schemas import (
     SkillProposerResponse,
     PromptProposerResponse,
 )
+from src.skills import activate_skills_profile, persist_runtime_to_profile, configured_skills_dir
 
 from .config import LoopConfig
 from .helpers import (
@@ -157,6 +158,10 @@ class SelfImprovingLoop:
         self._prompt_path = (
             self._project_root / "src" / "agent_profiles" / "base_agent" / "prompt.txt"
         )
+        self._skills_profile_dir = configured_skills_dir(
+            self._project_root, self.config.skills_dir
+        )
+        activate_skills_profile(self._project_root, self.config.skills_dir)
 
         # Initialize cache
         if config.cache_enabled:
@@ -285,6 +290,7 @@ class SelfImprovingLoop:
             # Select parent from frontier using configured strategy
             parent = self._select_parent(iteration_count)
             self.manager.switch_to(parent)
+            activate_skills_profile(self._project_root, self.config.skills_dir)
             _log(f"ITER {iteration_count}/{self.config.max_iterations}", f"Parent: {parent}")
             iteration_record["parent"] = parent
 
@@ -616,7 +622,7 @@ Modifications needed:
 
 Justification: {justification}
 
-Read the existing skill at .claude/skills/{target_skill}/SKILL.md
+Read the existing skill at {self._skills_profile_dir}/{target_skill}/SKILL.md
 and modify it to add these capabilities. Preserve all existing content that is still relevant."""
             else:
                 _log("", f"  -> Generating new skill...")
@@ -675,6 +681,7 @@ and modify it to add these capabilities. Preserve all existing content that is s
 
         # Commit changes
         self.manager.commit(f"{child_name}: {proposed[:50]}")
+        persist_runtime_to_profile(self._project_root, self.config.skills_dir)
 
         # Return mutation info (feedback will be written by caller with outcome)
         return MutationResult(
@@ -765,7 +772,7 @@ and modify it to add these capabilities. Preserve all existing content that is s
         Returns:
             List of skill names that have SKILL.md files.
         """
-        skills_dir = self._project_root / ".claude" / "skills"
+        skills_dir = self._skills_profile_dir
         active_skills = []
         if skills_dir.exists():
             for skill_dir in skills_dir.iterdir():

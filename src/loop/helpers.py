@@ -1,5 +1,6 @@
 """Helper functions for the self-improving loop."""
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -48,7 +49,8 @@ def build_proposer_query(
             feedback_history = "\n".join(feedback_lines_list[-feedback_lines:])
 
     # Get existing skills for context
-    skills_dir = Path(".claude/skills")
+    skills_dir_raw = os.getenv("EVOSKILL_SKILLS_DIR", ".claude/skills")
+    skills_dir = Path(skills_dir_raw)
     existing_skills = []
     if skills_dir.exists():
         for skill_dir in skills_dir.iterdir():

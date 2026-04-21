@@ -36,7 +36,13 @@ class OpenAILocalToolRuntime:
         self.add_dirs = [p.resolve() for p in self.add_dirs]
         # Always allow cwd as a root.
         self._roots = [self.cwd, *self.add_dirs]
-        self._skills_root = self.cwd / ".claude" / "skills"
+        skills_override = (os.getenv("EVOSKILL_SKILLS_DIR") or "").strip()
+        if skills_override:
+            p = Path(skills_override)
+            self._skills_root = p if p.is_absolute() else (self.cwd / p)
+        else:
+            self._skills_root = self.cwd / ".claude" / "skills"
+        self._skills_root = self._skills_root.resolve()
 
     @classmethod
     def from_options(cls, options: dict[str, Any]) -> "OpenAILocalToolRuntime":

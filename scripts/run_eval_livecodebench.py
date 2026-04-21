@@ -8,12 +8,14 @@ from pathlib import Path
 import pandas as pd
 
 from src.agent_profiles import Agent, make_livecodebench_agent_options, set_sdk
+from src.agent_profiles.skill_generator import get_project_root
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.evaluation.livecodebench import (
     score_livecodebench,
     ensure_livecodebench_dataset,
 )
 from src.schemas import AgentResponse
+from src.skills import activate_skills_profile
 
 
 async def main():
@@ -80,6 +82,12 @@ async def main():
         default="claude",
         help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
+    parser.add_argument(
+        "--skills-dir",
+        type=str,
+        default=".claude/skills_profiles/livecodebench",
+        help="Task-specific skills profile directory (default: .claude/skills_profiles/livecodebench)",
+    )
     args = parser.parse_args()
 
     # Set SDK
@@ -88,6 +96,7 @@ async def main():
     # Ensure dataset is downloaded
     if args.dataset is None:
         args.dataset = ensure_livecodebench_dataset()
+    activate_skills_profile(get_project_root(), args.skills_dir)
 
     # Load dataset
     data = pd.read_csv(args.dataset)

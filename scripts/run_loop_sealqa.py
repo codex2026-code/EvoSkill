@@ -218,6 +218,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to write structured per-iteration evolution logs as JSON.",
     )
     parser.add_argument(
+        "--skills-dir",
+        type=str,
+        default=".claude/skills_profiles/sealqa",
+        help="Task-specific skills profile directory.",
+    )
+    parser.add_argument(
         "--debug-eval",
         action="store_true",
         help="Enable per-question evaluation heartbeat logs.",
@@ -321,6 +327,7 @@ async def main(args: argparse.Namespace):
         cache_enabled=not args.no_cache,
         reset_feedback=not args.no_reset_feedback,
         continue_mode=args.continue_loop,
+        skills_dir=args.skills_dir,
     )
 
     model_info = f", model={args.model}" if args.model else ""

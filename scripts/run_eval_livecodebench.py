@@ -3,6 +3,7 @@
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -83,12 +84,32 @@ async def main():
         help="SDK to use: 'claude', 'opencode', or 'openai' (default: claude)",
     )
     parser.add_argument(
+        "--openai-base-url",
+        type=str,
+        default=None,
+        help="Override OPENAI_BASE_URL for --sdk openai (e.g., http://host:port/v1)",
+    )
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        default=None,
+        help="Override OPENAI_API_KEY for --sdk openai",
+    )
+    parser.add_argument(
         "--skills-dir",
         type=str,
         default=".claude/skills_profiles/livecodebench",
         help="Task-specific skills profile directory (default: .claude/skills_profiles/livecodebench)",
     )
     args = parser.parse_args()
+
+    if args.sdk == "openai":
+        if args.model:
+            os.environ["OPENAI_MODEL"] = args.model.strip()
+        if args.openai_base_url is not None:
+            os.environ["OPENAI_BASE_URL"] = args.openai_base_url.strip()
+        if args.openai_api_key is not None:
+            os.environ["OPENAI_API_KEY"] = args.openai_api_key.strip()
 
     # Set SDK
     set_sdk(args.sdk)

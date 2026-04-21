@@ -13,17 +13,25 @@ AGG_CSV="$EXP_ROOT/$RUN_TAG/summary/all_runs.csv"
 
 mkdir -p "$TASK_DIR/eval" "$SKILLS_DIR"
 
+COMMON_OPENAI_ARGS=()
+if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
+  COMMON_OPENAI_ARGS+=(--openai-base-url "$OPENAI_BASE_URL")
+fi
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  COMMON_OPENAI_ARGS+=(--openai-api-key "$OPENAI_API_KEY")
+fi
+
 python scripts/run_eval_livecodebench.py \
   --output "$RESULT_PKL" \
   --max-concurrent ${EVAL_MAX_CONCURRENT:-4} \
   --no-resume \
   --skills-dir "$SKILLS_DIR" \
   --sdk ${SDK:-claude} \
-  --model ${MODEL:-claude-opus-4-5-20251101}
+  --model ${MODEL:-claude-opus-4-5-20251101} \
+  "${COMMON_OPENAI_ARGS[@]}"
 
 python scripts/repro_templates/common/summarize_results.py \
   --task livecodebench \
   --result-pkl "$RESULT_PKL" \
   --summary-json "$SUMMARY_JSON" \
   --append-csv "$AGG_CSV"
-

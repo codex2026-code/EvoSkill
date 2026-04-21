@@ -55,6 +55,10 @@ class LoopConfig:
     # True = continue from existing frontier/branch
     continue_mode: bool = False
 
+    # Task-specific skills profile directory. If set, runtime .claude/skills
+    # is synchronized from/to this path.
+    skills_dir: str | None = None
+
     # Cache configuration
     cache_enabled: bool = True
     cache_dir: Path = field(default_factory=lambda: Path(".cache/runs"))

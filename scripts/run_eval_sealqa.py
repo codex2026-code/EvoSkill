@@ -17,6 +17,8 @@ from src.cache import CacheConfig, RunCache
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.evaluation.sealqa_scorer import score_sealqa
 from src.schemas import AgentResponse
+from src.skills import activate_skills_profile
+from src.agent_profiles.skill_generator import get_project_root
 
 
 async def main():
@@ -116,6 +118,12 @@ async def main():
         default=None,
         help="Grader API key. Defaults to OPENAI_API_KEY / --openai-api-key when unset.",
     )
+    parser.add_argument(
+        "--skills-dir",
+        type=str,
+        default=".claude/skills_profiles/sealqa",
+        help="Task-specific skills profile directory (default: .claude/skills_profiles/sealqa)",
+    )
     args = parser.parse_args()
 
     if args.sdk == "openai":
@@ -142,6 +150,7 @@ async def main():
 
     # Load dataset
     data = pd.read_csv(args.dataset)
+    activate_skills_profile(get_project_root(), args.skills_dir)
 
     # Filter by topic if requested
     if args.topic != "all":

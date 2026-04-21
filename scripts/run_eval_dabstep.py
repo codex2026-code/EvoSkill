@@ -17,6 +17,8 @@ from src.cache import CacheConfig, RunCache
 from src.evaluation.eval_full import evaluate_full, load_results
 from src.evaluation.dabstep_scorer import question_scorer
 from src.schemas import AgentResponse
+from src.skills import activate_skills_profile
+from src.agent_profiles.skill_generator import get_project_root
 
 
 PROMPT = """You are an expert data analyst and you will answer factoid questions by loading and referencing the files/documents listed below.
@@ -116,6 +118,12 @@ async def main():
         default=None,
         help="Override OPENAI_API_KEY for --sdk openai",
     )
+    parser.add_argument(
+        "--skills-dir",
+        type=str,
+        default=".claude/skills_profiles/dabstep",
+        help="Task-specific skills profile directory (default: .claude/skills_profiles/dabstep)",
+    )
     args = parser.parse_args()
 
     # Set SDK
@@ -137,6 +145,7 @@ async def main():
 
     # Load dataset
     data = pd.read_csv(args.dataset)
+    activate_skills_profile(get_project_root(), args.skills_dir)
 
     # Filter by level if requested
     if args.level != "all":

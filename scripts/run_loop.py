@@ -96,6 +96,10 @@ class LoopSettings(BaseSettings):
         default=".claude/iteration_log.json",
         description="Path to write structured per-iteration evolution logs as JSON",
     )
+    skills_dir: str = Field(
+        default=".claude/skills_profiles/officeqa",
+        description="Task-specific skills profile directory",
+    )
     debug_openai: bool = Field(
         default=False,
         description="Enable OpenAI tool-calling round logs (works with --sdk openai)",
@@ -208,6 +212,7 @@ async def main(settings: LoopSettings):
         cache_enabled=settings.cache,
         reset_feedback=settings.reset_feedback,
         continue_mode=settings.continue_loop,
+        skills_dir=settings.skills_dir,
     )
 
     model_info = f", model={settings.model}" if settings.model else ""

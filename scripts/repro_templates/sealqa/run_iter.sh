@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../.." && pwd)"
+cd "$REPO_ROOT"
+
 # Iterative group (SEAL-QA): run_loop_sealqa.py -> run_eval_sealqa.py
 # Keep this path layout unchanged for reproducibility.
 

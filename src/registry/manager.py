@@ -419,15 +419,34 @@ class ProgramManager:
         result = self._run_git(["status", "--porcelain"], check=False)
         has_changes = bool(result.stdout.strip())
 
-        # Stash if dirty
+        # Stash if dirty. Include untracked files so checkout does not fail when
+        # generated files are present. Ignore the benign "No local changes to save"
+        # case because some git versions return non-zero for that message.
+        stashed = False
         if has_changes:
-            self._run_git(["stash", "push", "-m", "auto-stash before checkout"])
+            stash_result = self._run_git(
+                [
+                    "stash",
+                    "push",
+                    "--include-untracked",
+                    "-m",
+                    "auto-stash before checkout",
+                ],
+                check=False,
+            )
+            output = f"{stash_result.stdout}\n{stash_result.stderr}".lower()
+            no_local_changes = "no local changes to save" in output
+            if stash_result.returncode != 0 and not no_local_changes:
+                raise RuntimeError(
+                    f"git stash failed before checkout '{branch}': {output.strip()}"
+                )
+            stashed = not no_local_changes
 
         # Perform checkout
         self._run_git(["checkout", branch])
 
         # Pop stash if we stashed
-        if has_changes:
+        if stashed:
             self._run_git(["stash", "pop"], check=False)
 
     def _git_checkout_new(self, branch: str) -> None:

@@ -44,11 +44,24 @@ async def evaluate_agent_parallel(
     """
     semaphore = asyncio.Semaphore(max_concurrent)
     debug_eval = os.getenv("EVOSKILL_EVAL_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    heartbeat_enabled = os.getenv("EVOSKILL_EVAL_HEARTBEAT", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     heartbeat_sec = int(os.getenv("EVOSKILL_EVAL_HEARTBEAT_SEC", "30"))
     heartbeat_sec = max(5, heartbeat_sec)
     eval_timeout_sec = int(os.getenv("EVOSKILL_EVAL_TIMEOUT_SEC", "1800"))
     eval_timeout_sec = max(60, eval_timeout_sec)
     eval_timeout_min = eval_timeout_sec // 60
+    if debug_eval or heartbeat_enabled:
+        print(
+            "[EVAL][CONFIG] "
+            f"items={len(items)} max_concurrent={max_concurrent} "
+            f"agent_timeout_sec={getattr(agent, 'timeout_seconds', 'unknown')} "
+            f"eval_timeout_sec={eval_timeout_sec} heartbeat_sec={heartbeat_sec}"
+        )
 
     async def run_one(question: str, ground_truth: str) -> EvalResult[T]:
         async with semaphore:
@@ -75,8 +88,9 @@ async def evaluate_agent_parallel(
 
                     # Cache miss - run agent
                     if trace is None:
-                        if debug_eval:
+                        if debug_eval or heartbeat_enabled:
                             heartbeat_task = asyncio.create_task(_heartbeat())
+                        if debug_eval:
                             print(f"[EVAL][RUN] q='{question[:80]}' invoking agent.run")
                         trace = await agent.run(question)
                         if debug_eval:

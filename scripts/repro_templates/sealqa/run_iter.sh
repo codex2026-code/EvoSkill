@@ -18,6 +18,49 @@ AGG_CSV="$EXP_ROOT/$RUN_TAG/summary/all_runs.csv"
 
 mkdir -p "$TASK_DIR/eval" "$SKILLS_DIR"
 
+
+resolve_conflicts_preferring_latest() {
+  local strategy=${CONFLICT_RESOLUTION_STRATEGY:-theirs}
+
+  if [[ "$strategy" != "theirs" && "$strategy" != "ours" ]]; then
+    echo "[WARN] Invalid CONFLICT_RESOLUTION_STRATEGY=$strategy (expected theirs|ours), fallback to theirs" >&2
+    strategy="theirs"
+  fi
+
+  mapfile -t conflicted_files < <(git diff --name-only --diff-filter=U)
+  if [[ ${#conflicted_files[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "[AUTO-FIX] Found ${#conflicted_files[@]} conflicted files; resolving with --$strategy" >&2
+  for file in "${conflicted_files[@]}"; do
+    git checkout --"$strategy" -- "$file"
+    git add -- "$file"
+  done
+
+  mapfile -t remaining < <(git diff --name-only --diff-filter=U)
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    echo "[ERROR] Conflicts still remain after auto-fix:" >&2
+    printf '  - %s\n' "${remaining[@]}" >&2
+    return 1
+  fi
+
+  if [[ -f .git/MERGE_HEAD ]]; then
+    git commit -m "auto: resolve merge conflicts preferring $strategy before sealqa run"
+  elif [[ -f .git/CHERRY_PICK_HEAD || -f .git/REVERT_HEAD ]]; then
+    git commit --no-edit
+  fi
+
+  if [[ -d .git/rebase-merge || -d .git/rebase-apply ]]; then
+    GIT_EDITOR=true git rebase --continue
+  fi
+}
+
+AUTO_RESOLVE_CONFLICTS=${AUTO_RESOLVE_CONFLICTS:-1}
+if [[ "$AUTO_RESOLVE_CONFLICTS" == "1" ]]; then
+  resolve_conflicts_preferring_latest
+fi
+
 COMMON_OPENAI_ARGS=()
 if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
   COMMON_OPENAI_ARGS+=(--openai-base-url "$OPENAI_BASE_URL")

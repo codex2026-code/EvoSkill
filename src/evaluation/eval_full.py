@@ -95,6 +95,41 @@ async def evaluate_full(
     eval_timeout_sec = int(os.getenv("EVOSKILL_EVAL_TIMEOUT_SEC", "1800"))
     eval_timeout_sec = max(60, eval_timeout_sec)
     eval_timeout_min = eval_timeout_sec // 60
+    debug_eval = os.getenv("EVOSKILL_EVAL_DEBUG", "").strip() in {"1", "true", "TRUE", "yes", "YES"}
+    heartbeat_sec = int(os.getenv("EVOSKILL_EVAL_HEARTBEAT_SEC", "30"))
+    heartbeat_sec = max(5, heartbeat_sec)
+    active: dict[int, float] = {}
+    completed = 0
+
+    if debug_eval:
+        print(
+            f"[EVAL-DEBUG] items={len(items)} max_concurrent={max_concurrent} "
+            f"timeout={eval_timeout_sec}s heartbeat={heartbeat_sec}s"
+        )
+
+    async def heartbeat() -> None:
+        while True:
+            await asyncio.sleep(heartbeat_sec)
+            async with lock:
+                if not active:
+                    continue
+                now = asyncio.get_event_loop().time()
+                longest = sorted(
+                    ((idx, now - started) for idx, started in active.items()),
+                    key=lambda x: x[1],
+                    reverse=True,
+                )[:3]
+                longest_text = ", ".join(
+                    f"idx={idx} elapsed={int(elapsed)}s" for idx, elapsed in longest
+                )
+                print(
+                    f"[EVAL-DEBUG][HEARTBEAT] active={len(active)} completed={completed}/{len(items)} | "
+                    f"longest: {longest_text}"
+                )
+
+    heartbeat_task: asyncio.Task[None] | None = None
+    if debug_eval:
+        heartbeat_task = asyncio.create_task(heartbeat())
 
     async def run_one(
         index: int, question: str, ground_truth: str
@@ -102,6 +137,11 @@ async def evaluate_full(
         async with semaphore:
             error = None
             trace = None
+            started = asyncio.get_event_loop().time()
+            async with lock:
+                active[index] = started
+            if debug_eval:
+                print(f"[EVAL-DEBUG][START] idx={index} q={question[:80]!r}")
             try:
                 async with asyncio.timeout(eval_timeout_sec):
                     if cache is not None:
@@ -128,13 +168,31 @@ async def evaluate_full(
 
             # Append to file immediately (thread-safe)
             async with lock:
+                nonlocal completed
+                completed += 1
+                active.pop(index, None)
                 existing = load_results(output_path)
                 existing.append(result)
                 with open(output_path, "wb") as f:
                     pickle.dump(existing, f)
+                if debug_eval:
+                    elapsed = asyncio.get_event_loop().time() - started
+                    status = "ERROR" if error else "OK"
+                    print(
+                        f"[EVAL-DEBUG][DONE] idx={index} status={status} "
+                        f"elapsed={elapsed:.1f}s completed={completed}/{len(items)}"
+                    )
 
             return result
 
     tasks = [run_one(idx, q, gt) for idx, q, gt in items]
-    results = await tqdm_asyncio.gather(*tasks, desc="Evaluating")
+    try:
+        results = await tqdm_asyncio.gather(*tasks, desc="Evaluating")
+    finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
     return results

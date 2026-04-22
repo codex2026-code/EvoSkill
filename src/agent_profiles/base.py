@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -493,28 +494,53 @@ class Agent(Generic[T]):
         """Execute query with timeout and exponential backoff retry."""
         last_error: Exception | None = None
         backoff = self.initial_backoff
+        query_id = hashlib.sha1(query[:500].encode("utf-8")).hexdigest()[:8]
+        query_preview = " ".join(query.strip().split())[:80]
 
         for attempt in range(self.max_retries):
+            started = time.monotonic()
             try:
                 async with asyncio.timeout(self.timeout_seconds):
-                    return await self._execute_query(query)
+                    result = await self._execute_query(query)
+                    logger.info(
+                        "Agent query succeeded [id=%s] on attempt %s/%s in %.1fs",
+                        query_id,
+                        attempt + 1,
+                        self.max_retries,
+                        time.monotonic() - started,
+                    )
+                    return result
             except asyncio.TimeoutError:
                 last_error = TimeoutError(
                     f"Query timed out after {self.timeout_seconds}s"
                 )
                 logger.warning(
-                    f"Attempt {attempt + 1}/{self.max_retries} timed out. Retrying in {backoff}s..."
+                    "Attempt %s/%s timed out after %.1fs [id=%s preview=%r]. Retrying in %ss...",
+                    attempt + 1,
+                    self.max_retries,
+                    time.monotonic() - started,
+                    query_id,
+                    query_preview,
+                    backoff,
                 )
             except Exception as e:
                 last_error = e
                 logger.warning(
-                    f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. Retrying in {backoff}s..."
+                    "Attempt %s/%s failed after %.1fs [id=%s preview=%r]: %s. Retrying in %ss...",
+                    attempt + 1,
+                    self.max_retries,
+                    time.monotonic() - started,
+                    query_id,
+                    query_preview,
+                    e,
+                    backoff,
                 )
 
             if attempt < self.max_retries - 1:
                 await asyncio.sleep(backoff)
                 backoff *= 2  # Exponential backoff
 
+        logger.error("Agent query exhausted retries [id=%s preview=%r]", query_id, query_preview)
         raise last_error if last_error else RuntimeError("All retries exhausted")
 
     async def run(self, query: str) -> AgentTrace[T]:

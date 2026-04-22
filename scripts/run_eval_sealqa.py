@@ -124,7 +124,26 @@ async def main():
         default=".claude/skills_profiles/sealqa",
         help="Task-specific skills profile directory (default: .claude/skills_profiles/sealqa)",
     )
+    parser.add_argument(
+        "--debug-eval",
+        action="store_true",
+        help="Enable per-question evaluation heartbeat logs.",
+    )
+    parser.add_argument(
+        "--eval-heartbeat-sec",
+        type=int,
+        default=30,
+        help="Heartbeat interval (seconds) for --debug-eval logs (default: 30).",
+    )
     args = parser.parse_args()
+
+    if args.debug_eval:
+        os.environ["EVOSKILL_EVAL_DEBUG"] = "1"
+        os.environ["EVOSKILL_EVAL_HEARTBEAT_SEC"] = str(max(5, args.eval_heartbeat_sec))
+        print(
+            f"Eval debug enabled: heartbeat={os.environ['EVOSKILL_EVAL_HEARTBEAT_SEC']}s, "
+            f"eval_timeout={os.getenv('EVOSKILL_EVAL_TIMEOUT_SEC', '1800')}s"
+        )
 
     if args.sdk == "openai":
         if args.openai_base_url is not None:

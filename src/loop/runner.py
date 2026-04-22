@@ -229,6 +229,20 @@ class SelfImprovingLoop:
             "result": str(trace.result) if trace.result else "",
         }
 
+
+    @staticmethod
+    def _question_identifier(question: str) -> str:
+        """Build a stable filesystem-safe id from a question string."""
+        import hashlib
+        import re
+
+        normalized = " ".join(question.strip().split())
+        digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:10]
+        prefix = re.sub(r"[^a-zA-Z0-9]+", "-", normalized.lower()).strip("-")
+        if not prefix:
+            prefix = "question"
+        return f"{prefix[:48]}-{digest}"
+
     async def run(self) -> LoopResult:
         """Run the full self-improving loop.
 
@@ -383,6 +397,11 @@ class SelfImprovingLoop:
                 0.0
             )
             iteration_record["parent_score"] = parent_score
+
+            # Propagate a stable question identifier to storage backends that support it.
+            if failure_records and hasattr(self.manager, "set_iteration_context"):
+                first_qid = self._question_identifier(failure_records[0]["question"])
+                self.manager.set_iteration_context(first_qid)
 
             # Run proposer with all failures (use actual iteration number with offset)
             mutation_result = await self._mutate_with_fallback(parent, failures, actual_iteration)

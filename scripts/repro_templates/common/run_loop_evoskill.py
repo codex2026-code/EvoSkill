@@ -58,6 +58,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument(
+        "--artifacts-dir",
+        type=str,
+        default=None,
+        help="Artifact registry root for non-git program state tracking (used by sealqa/livecodebench in skill_only mode).",
+    )
+    parser.add_argument(
         "--sdk",
         choices=["claude", "opencode", "openai"],
         default="claude",
@@ -116,6 +122,7 @@ async def main() -> None:
         reset_feedback=not args.no_reset_feedback,
         failure_samples=args.failure_samples,
         selection_strategy=args.selection_strategy,
+        artifacts_dir=args.artifacts_dir,
     )
     result = await loop.run()
 
@@ -125,6 +132,7 @@ async def main() -> None:
         "skills_dir": args.skills_dir,
         "mode": args.mode,
         "model": args.model,
+        "artifacts_dir": args.artifacts_dir,
         "sdk": args.sdk,
         "openai_base_url": args.openai_base_url,
         "max_iterations": args.max_iterations,

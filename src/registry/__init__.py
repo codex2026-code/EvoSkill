@@ -39,6 +39,7 @@ Example usage:
 
 from .models import ProgramConfig
 from .manager import ProgramManager
+from .artifact_manager import ArtifactProgramManager
 from .sdk_utils import (
     config_to_options,
     options_to_config,
@@ -51,6 +52,7 @@ __all__ = [
     # Core classes
     "ProgramConfig",
     "ProgramManager",
+    "ArtifactProgramManager",
     # SDK utilities
     "config_to_options",
     "options_to_config",

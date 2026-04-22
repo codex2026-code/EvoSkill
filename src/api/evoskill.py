@@ -18,7 +18,7 @@ from src.agent_profiles import (
     prompt_generator_options,
 )
 from src.loop import SelfImprovingLoop, LoopConfig, LoopAgents, LoopResult
-from src.registry import ProgramManager
+from src.registry import ProgramManager, ArtifactProgramManager
 from src.schemas import (
     AgentResponse,
     SkillProposerResponse,
@@ -75,6 +75,7 @@ class EvoSkill:
         selection_strategy: str = "best",
         scorer: ScorerFn | None = None,
         task_config: TaskConfig | None = None,
+        artifacts_dir: str | None = None,
     ) -> None:
         self._task_config = task_config or get_task(task)
         self._dataset_path = dataset or self._task_config.default_dataset
@@ -96,6 +97,7 @@ class EvoSkill:
         self._failure_samples = failure_samples
         self._selection_strategy = selection_strategy
         self._scorer_override = scorer
+        self._artifacts_dir = artifacts_dir
 
     def _build_config(self) -> LoopConfig:
         """Create a LoopConfig from constructor params."""
@@ -162,7 +164,17 @@ class EvoSkill:
             config.max_iterations = max_iterations
 
         agents = self._build_agents()
-        manager = ProgramManager(cwd=get_project_root())
+        use_artifact_registry = (
+            self._task_config.name in {"sealqa", "livecodebench"}
+            and self._mode == "skill_only"
+        )
+        if use_artifact_registry:
+            artifacts_root = self._artifacts_dir or f"artifacts/{self._task_config.name}"
+            manager = ArtifactProgramManager(artifacts_root=artifacts_root, cwd=get_project_root())
+            print(f"Program registry: artifact mode ({artifacts_root})")
+        else:
+            manager = ProgramManager(cwd=get_project_root())
+            print("Program registry: git mode")
         train_pools, val_data = self._load_data()
 
         # Print summary

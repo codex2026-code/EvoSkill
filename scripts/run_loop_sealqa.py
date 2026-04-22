@@ -24,7 +24,7 @@ from src.agent_profiles import (
 )
 from src.agent_profiles.skill_generator import get_project_root
 from src.evaluation.sealqa_scorer import score_sealqa
-from src.registry import ProgramManager
+from src.registry import ProgramManager, ArtifactProgramManager
 from src.schemas import (
     AgentResponse,
     SkillProposerResponse,
@@ -224,6 +224,12 @@ def parse_args() -> argparse.Namespace:
         help="Task-specific skills profile directory.",
     )
     parser.add_argument(
+        "--artifacts-dir",
+        type=str,
+        default="artifacts/sealqa",
+        help="Artifact registry root when running sealqa skill iterations without git branches.",
+    )
+    parser.add_argument(
         "--debug-eval",
         action="store_true",
         help="Enable per-question evaluation heartbeat logs.",
@@ -314,7 +320,15 @@ async def main(args: argparse.Namespace):
         skill_generator=Agent(skill_generator_options, ToolGeneratorResponse),
         prompt_generator=Agent(prompt_generator_options, PromptGeneratorResponse),
     )
-    manager = ProgramManager(cwd=get_project_root())
+    if args.mode == "skill_only":
+        manager = ArtifactProgramManager(
+            artifacts_root=args.artifacts_dir,
+            cwd=get_project_root(),
+        )
+        print(f"Program registry: artifact mode ({args.artifacts_dir})")
+    else:
+        manager = ProgramManager(cwd=get_project_root())
+        print("Program registry: git mode")
 
     config = LoopConfig(
         max_iterations=args.max_iterations,
@@ -343,6 +357,7 @@ async def main(args: argparse.Namespace):
         "model": args.model,
         "max_iterations": args.max_iterations,
         "frontier_size": args.frontier_size,
+        "artifacts_dir": args.artifacts_dir if args.mode == "skill_only" else None,
         "no_improvement_limit": args.no_improvement_limit,
         "failure_samples": args.failure_samples,
         "history": result.history,

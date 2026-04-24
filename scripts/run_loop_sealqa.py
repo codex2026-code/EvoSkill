@@ -8,6 +8,7 @@ import logging
 import os
 from functools import partial
 from pathlib import Path
+from typing import Iterable
 
 import pandas as pd
 
@@ -73,6 +74,53 @@ def stratified_split(
         ])
 
     return train_pools, val_data
+
+
+def _normalize_dataset_columns(data: pd.DataFrame) -> pd.DataFrame:
+    """Normalize dataset column names to question/ground_truth/category.
+
+    Accepts common variants (e.g., answer/topic, uppercase names) and raises
+    an actionable error when required columns are missing.
+    """
+
+    def _pick_first_match(candidates: Iterable[str], existing_lc_to_raw: dict[str, str]) -> str | None:
+        for col in candidates:
+            found = existing_lc_to_raw.get(col.lower())
+            if found:
+                return found
+        return None
+
+    existing = list(data.columns)
+    existing_lc_to_raw = {col.lower().strip(): col for col in existing}
+    alias_map = {
+        "question": ("question", "query", "prompt", "instruction"),
+        "ground_truth": ("ground_truth", "answer", "reference_answer", "target", "gold_answer"),
+        "category": ("category", "topic", "type", "domain"),
+    }
+
+    rename_map: dict[str, str] = {}
+    missing: list[str] = []
+    for canonical, aliases in alias_map.items():
+        found = _pick_first_match(aliases, existing_lc_to_raw)
+        if found is None:
+            missing.append(canonical)
+        elif found != canonical:
+            rename_map[found] = canonical
+
+    if missing:
+        raise ValueError(
+            "Dataset is missing required columns after normalization. "
+            f"Missing: {missing}. "
+            f"Available columns: {existing}. "
+            "Expected canonical columns: ['question', 'ground_truth', 'category'] "
+            "(aliases accepted: question/query/prompt/instruction, "
+            "ground_truth/answer/reference_answer/target/gold_answer, "
+            "category/topic/type/domain)."
+        )
+
+    if rename_map:
+        data = data.rename(columns=rename_map)
+    return data
 
 
 def _sealqa_scorer(
@@ -294,8 +342,8 @@ async def main(args: argparse.Namespace):
 
     data = pd.read_csv(args.dataset)
 
-    # Rename SEAL-QA columns to match stratified_split expectations
-    data.rename(columns={"topic": "category", "answer": "ground_truth"}, inplace=True)
+    # Normalize dataset columns to match stratified_split expectations.
+    data = _normalize_dataset_columns(data)
 
     # Stratified split by category
     train_pools, val_data = stratified_split(data, train_ratio=args.train_ratio, val_ratio=args.val_ratio)

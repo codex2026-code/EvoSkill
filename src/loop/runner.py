@@ -40,7 +40,7 @@ def _score_multi_tolerance(question: str, predicted: str, ground_truth: str) -> 
     weight_total = 0.0
     for tol in TOLERANCE_LEVELS:
         weight = 1.0 / (1.0 + 20.0 * tol)
-        score = score_answer(predicted, ground_truth, tol)
+        score = score_answer(ground_truth, predicted, tol)
         weighted_sum += weight * score
         weight_total += weight
     return weighted_sum / weight_total
@@ -557,11 +557,16 @@ class SelfImprovingLoop:
         for result in results:
             if result.trace is None or result.trace.output is None:
                 continue  # Timeout/error/parse failed = 0 score
-            score += self.scorer(
-                result.question,
-                result.trace.output.final_answer,
-                result.ground_truth,
-            )
+            try:
+                score += self.scorer(
+                    result.question,
+                    result.trace.output.final_answer,
+                    result.ground_truth,
+                )
+            except ValueError as exc:
+                # Treat invalid comparison payloads as incorrect rather than
+                # crashing the entire long-running evaluation.
+                _log("WARN", f"Skipping invalid score item: {exc}", indent=1)
         return score / len(results)
 
     async def _mutate(

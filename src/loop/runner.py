@@ -25,6 +25,16 @@ def _log(phase: str, message: str = "", indent: int = 0) -> None:
         print(f"{prefix}{message}")
 
 
+def _normalize_text_value(value: object) -> str:
+    """Convert arbitrary values to safe text for scoring/comparison."""
+    if value is None:
+        return ""
+    # Handle NaN values that can appear from dataframe-based datasets.
+    if isinstance(value, float) and value != value:
+        return ""
+    return str(value)
+
+
 def _score_multi_tolerance(question: str, predicted: str, ground_truth: str) -> float:
     """Score answer using weighted average across tolerance levels.
 
@@ -346,21 +356,25 @@ class SelfImprovingLoop:
             failures: list[tuple[AgentTrace, str, str, str]] = []  # (trace, agent_answer, ground_truth, category)
             failure_records: list[dict] = []
             for trace, (question, answer, category) in zip(traces, test_samples):
+                question_text = _normalize_text_value(question)
+                ground_truth_text = _normalize_text_value(answer)
                 agent_answer = (
-                    trace.output.final_answer if trace.output else "[PARSE FAILED]"
+                    _normalize_text_value(trace.output.final_answer)
+                    if trace.output
+                    else "[PARSE FAILED]"
                 )
                 avg_score = self.scorer(
-                    question,
+                    question_text,
                     agent_answer.strip().lower(),
-                    answer.strip().lower(),
+                    ground_truth_text.strip().lower(),
                 )
                 status = "[OK]" if avg_score >= 0.8 else "[FAIL]"
-                _log("", f"    {status} [{category}] {question[:40]}...")
+                _log("", f"    {status} [{category}] {question_text[:40]}...")
                 if avg_score < 0.8:
                     failure_records.append(
                         {
-                            "question": question,
-                            "ground_truth": answer,
+                            "question": question_text,
+                            "ground_truth": ground_truth_text,
                             "category": category,
                             "agent_answer": agent_answer,
                             "score": avg_score,
@@ -377,7 +391,7 @@ class SelfImprovingLoop:
                         }
                     )
                 if avg_score < 0.8:
-                    failures.append((trace, agent_answer, answer, category))
+                    failures.append((trace, agent_answer, ground_truth_text, category))
             iteration_record["failures"] = failure_records
 
             # Always propose if any failures exist
@@ -558,10 +572,13 @@ class SelfImprovingLoop:
             if result.trace is None or result.trace.output is None:
                 continue  # Timeout/error/parse failed = 0 score
             try:
+                question_text = _normalize_text_value(result.question)
+                predicted_text = _normalize_text_value(result.trace.output.final_answer)
+                ground_truth_text = _normalize_text_value(result.ground_truth)
                 score += self.scorer(
-                    result.question,
-                    result.trace.output.final_answer,
-                    result.ground_truth,
+                    question_text,
+                    predicted_text,
+                    ground_truth_text,
                 )
             except ValueError as exc:
                 # Treat invalid comparison payloads as incorrect rather than

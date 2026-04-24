@@ -3,7 +3,16 @@ from typing import Union
 import math
 from difflib import SequenceMatcher
 
-def is_numeric_with_commas(value: str) -> bool:
+def _to_text(value: object) -> str:
+    """Normalize arbitrary values to text for robust scoring."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value != value:
+        return ""
+    return str(value)
+
+
+def is_numeric_with_commas(value: object) -> bool:
     """
     True for strings that are either
       - numbers using comma thousands‑separators (at least one comma),
@@ -13,7 +22,7 @@ def is_numeric_with_commas(value: str) -> bool:
         e.g. "0.99" or "0,99"
     Plain ints without commas (e.g. "64") are rejected.
     """
-    v = value.strip()
+    v = _to_text(value).strip()
     pattern = r'''
       ^\$?                                  # optional dollar sign
       (?:                                   # two alternate groups:
@@ -24,10 +33,10 @@ def is_numeric_with_commas(value: str) -> bool:
     '''
     return bool(re.match(pattern, v, re.VERBOSE))
 
-def question_scorer(input1: str, input2: str) -> bool:
+def question_scorer(input1: object, input2: object) -> bool:
     # Remove leading/trailing whitespace and convert to lowercase
-    input1 = input1.strip().lower()
-    input2 = input2.strip().lower()
+    input1 = _to_text(input1).strip().lower()
+    input2 = _to_text(input2).strip().lower()
 
     # Check if inputs are numeric with commas
     if is_numeric_with_commas(input1) or is_numeric_with_commas(input2):
@@ -50,9 +59,9 @@ def question_scorer(input1: str, input2: str) -> bool:
     # Check for string match or subset
     return compare_strings(input1, input2)
 
-def extract_numeric(value: str) -> Union[float, None]:
+def extract_numeric(value: object) -> Union[float, None]:
     # Remove commas and currency symbols from the value string
-    value = value.replace(',', '').replace('$', '')
+    value = _to_text(value).replace(',', '').replace('$', '')
     
     # Extract the first occurrence of a numeric value (including percentages and leading decimal point)
     match = re.search(r'(\d*\.\d+|\d+\.?\d*)%?', value)

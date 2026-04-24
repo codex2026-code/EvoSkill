@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         help="Artifact registry root for non-git program state tracking (used by sealqa/livecodebench in skill_only mode).",
     )
     parser.add_argument(
+        "--dabstep-workspace-dir",
+        type=str,
+        default=None,
+        help="Isolated workspace root for DabStep code edits (disables direct edits in repo root).",
+    )
+    parser.add_argument(
         "--sdk",
         choices=["claude", "opencode", "openai"],
         default="claude",
@@ -123,6 +129,7 @@ async def main() -> None:
         failure_samples=args.failure_samples,
         selection_strategy=args.selection_strategy,
         artifacts_dir=args.artifacts_dir,
+        dabstep_workspace_dir=args.dabstep_workspace_dir,
     )
     result = await loop.run()
 
@@ -133,6 +140,7 @@ async def main() -> None:
         "mode": args.mode,
         "model": args.model,
         "artifacts_dir": args.artifacts_dir,
+        "dabstep_workspace_dir": args.dabstep_workspace_dir,
         "sdk": args.sdk,
         "openai_base_url": args.openai_base_url,
         "max_iterations": args.max_iterations,

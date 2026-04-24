@@ -8,6 +8,9 @@ from src.agent_profiles.skill_generator.prompt import SKILL_GENERATOR_SYSTEM_PRO
 
 def get_project_root() -> str:
     """Get the project root directory by looking for pyproject.toml."""
+    override = os.getenv("EVOSKILL_PROJECT_ROOT_OVERRIDE", "").strip()
+    if override:
+        return str(Path(override).expanduser().resolve())
     current = Path(__file__).resolve()
     for parent in current.parents:
         if (parent / "pyproject.toml").exists():

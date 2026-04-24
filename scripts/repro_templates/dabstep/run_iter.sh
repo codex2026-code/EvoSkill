@@ -14,6 +14,25 @@ SKILLS_DIR="$TASK_DIR/skills_profile"
 RESULT_PKL="$TASK_DIR/eval/results.pkl"
 SUMMARY_JSON="$TASK_DIR/eval/summary.json"
 AGG_CSV="$EXP_ROOT/$RUN_TAG/summary/all_runs.csv"
+CLEAN_BEFORE_RUN=${CLEAN_BEFORE_RUN:-1}
+CACHE_DIR=${CACHE_DIR:-.cache/runs}
+ARTIFACTS_DIR=${ARTIFACTS_DIR:-artifacts/dabstep}
+
+cleanup_previous_outputs() {
+  [[ "$CLEAN_BEFORE_RUN" == "1" ]] || return 0
+  echo "[cleanup] CLEAN_BEFORE_RUN=1, removing stale outputs for RUN_TAG=$RUN_TAG"
+
+  # Remove prior run outputs for the same tag (loop/eval/skills profile snapshots).
+  rm -rf "$TASK_DIR"
+
+  # Remove cached traces to avoid stale hit/mismatch against updated programs or prompts.
+  rm -rf "$CACHE_DIR"
+
+  # Remove DabStep artifact registry/workspace snapshots so base program state starts fresh.
+  rm -rf "$ARTIFACTS_DIR"
+}
+
+cleanup_previous_outputs
 
 mkdir -p "$TASK_DIR/eval" "$SKILLS_DIR"
 

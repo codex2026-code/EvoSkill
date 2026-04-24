@@ -8,6 +8,10 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
+from copy import deepcopy
+from pathlib import Path
 from typing import Callable, Any
 
 from src.agent_profiles import Agent
@@ -76,6 +80,7 @@ class EvoSkill:
         scorer: ScorerFn | None = None,
         task_config: TaskConfig | None = None,
         artifacts_dir: str | None = None,
+        dabstep_workspace_dir: str | None = None,
     ) -> None:
         self._task_config = task_config or get_task(task)
         self._dataset_path = dataset or self._task_config.default_dataset
@@ -98,6 +103,42 @@ class EvoSkill:
         self._selection_strategy = selection_strategy
         self._scorer_override = scorer
         self._artifacts_dir = artifacts_dir
+        self._dabstep_workspace_dir = dabstep_workspace_dir
+        self._workspace_root: Path | None = None
+
+    def _clone_options_with_cwd(self, options: Any, cwd: Path) -> Any:
+        """Clone an options object and retarget its cwd when supported."""
+        cloned = deepcopy(options)
+        if hasattr(cloned, "cwd"):
+            cloned.cwd = str(cwd)
+        return cloned
+
+    def _prepare_dabstep_workspace(self) -> Path:
+        """Prepare isolated workspace for DabStep code edits and state."""
+        repo_root = Path(get_project_root())
+        workspace_dir = self._dabstep_workspace_dir or "artifacts/dabstep/workspaces/default"
+        workspace = Path(workspace_dir)
+        if not workspace.is_absolute():
+            workspace = repo_root / workspace
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        # Seed required runtime files once so edits stay isolated from repository root.
+        seed_paths = [
+            Path(".claude/skills"),
+            Path(".claude/feedback_history.md"),
+            Path("src/agent_profiles/base_agent/prompt.txt"),
+        ]
+        for rel in seed_paths:
+            src = repo_root / rel
+            dst = workspace / rel
+            if dst.exists() or not src.exists():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if src.is_dir():
+                shutil.copytree(src, dst)
+            else:
+                shutil.copy2(src, dst)
+        return workspace
 
     def _build_config(self) -> LoopConfig:
         """Create a LoopConfig from constructor params."""
@@ -118,12 +159,31 @@ class EvoSkill:
     def _build_agents(self) -> LoopAgents:
         """Assemble LoopAgents from task config."""
         base_options = self._task_config.make_agent_options(model=self._model)
+        skill_proposer = skill_proposer_options
+        prompt_proposer = prompt_proposer_options
+        skill_generator = skill_generator_options
+        prompt_generator = prompt_generator_options
+
+        if self._workspace_root is not None:
+            skill_proposer = self._clone_options_with_cwd(
+                skill_proposer_options, self._workspace_root
+            )
+            prompt_proposer = self._clone_options_with_cwd(
+                prompt_proposer_options, self._workspace_root
+            )
+            skill_generator = self._clone_options_with_cwd(
+                skill_generator_options, self._workspace_root
+            )
+            prompt_generator = self._clone_options_with_cwd(
+                prompt_generator_options, self._workspace_root
+            )
+
         return LoopAgents(
             base=Agent(base_options, AgentResponse),
-            skill_proposer=Agent(skill_proposer_options, SkillProposerResponse),
-            prompt_proposer=Agent(prompt_proposer_options, PromptProposerResponse),
-            skill_generator=Agent(skill_generator_options, ToolGeneratorResponse),
-            prompt_generator=Agent(prompt_generator_options, PromptGeneratorResponse),
+            skill_proposer=Agent(skill_proposer, SkillProposerResponse),
+            prompt_proposer=Agent(prompt_proposer, PromptProposerResponse),
+            skill_generator=Agent(skill_generator, ToolGeneratorResponse),
+            prompt_generator=Agent(prompt_generator, PromptGeneratorResponse),
         )
 
     def _load_data(
@@ -163,14 +223,25 @@ class EvoSkill:
         if max_iterations is not None:
             config.max_iterations = max_iterations
 
+        if self._task_config.name == "dabstep":
+            self._workspace_root = self._prepare_dabstep_workspace()
+            os.environ["EVOSKILL_PROJECT_ROOT_OVERRIDE"] = str(self._workspace_root)
+        else:
+            self._workspace_root = None
+            os.environ.pop("EVOSKILL_PROJECT_ROOT_OVERRIDE", None)
+
         agents = self._build_agents()
         use_artifact_registry = (
             self._task_config.name in {"sealqa", "livecodebench"}
             and self._mode == "skill_only"
-        )
+        ) or self._task_config.name == "dabstep"
         if use_artifact_registry:
             artifacts_root = self._artifacts_dir or f"artifacts/{self._task_config.name}"
-            manager = ArtifactProgramManager(artifacts_root=artifacts_root, cwd=get_project_root())
+            manager_cwd = self._workspace_root or Path(get_project_root())
+            manager = ArtifactProgramManager(
+                artifacts_root=artifacts_root,
+                cwd=manager_cwd,
+            )
             print(f"Program registry: artifact mode ({artifacts_root})")
         else:
             manager = ProgramManager(cwd=get_project_root())

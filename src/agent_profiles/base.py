@@ -375,120 +375,122 @@ class Agent(Generic[T]):
                 timeout=http_timeout_sec,
                 max_retries=http_max_retries,
             )
+            try:
+                system_text = self._build_openai_system_prompt(normalized_options)
+                user_text = query
 
-            system_text = self._build_openai_system_prompt(normalized_options)
-            user_text = query
-
-            format_hint = normalized_options.get("format")
-            if format_hint:
-                user_text = (
-                    f"{query}\n\n"
-                    "You must respond with strictly valid JSON that matches this schema: "
-                    f"{json.dumps(format_hint, ensure_ascii=False)}"
-                )
-
-            messages = []
-            if system_text:
-                messages.append({"role": "system", "content": str(system_text)})
-            messages.append({"role": "user", "content": user_text})
-
-            runtime = OpenAILocalToolRuntime.from_options(normalized_options)
-            tool_defs = runtime.get_openai_tools()
-            debug_openai_tools = os.getenv("EVOSKILL_OPENAI_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
-
-            max_tool_rounds = 24
-            completion = None
-            query_started = time.monotonic()
-            for round_idx in range(1, max_tool_rounds + 1):
-                messages = self._compact_openai_messages(messages)
-                round_started = time.monotonic()
-                if debug_openai_tools:
-                    logger.info(
-                        "[OPENAI][ROUND_START] round=%s/%s messages=%s model=%s",
-                        round_idx,
-                        max_tool_rounds,
-                        len(messages),
-                        model_name,
+                format_hint = normalized_options.get("format")
+                if format_hint:
+                    user_text = (
+                        f"{query}\n\n"
+                        "You must respond with strictly valid JSON that matches this schema: "
+                        f"{json.dumps(format_hint, ensure_ascii=False)}"
                     )
-                completion = await client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    tools=tool_defs if tool_defs else None,
-                    tool_choice="auto" if tool_defs else None,
-                )
-                if debug_openai_tools:
-                    logger.info(
-                        "[OPENAI][ROUND_DONE] round=%s latency=%.2fs",
-                        round_idx,
-                        time.monotonic() - round_started,
-                    )
-                choice = completion.choices[0] if completion.choices else None
-                msg = choice.message if choice else None
-                tool_calls = getattr(msg, "tool_calls", None) if msg else None
-                if not msg:
-                    break
 
-                if tool_calls:
+                messages = []
+                if system_text:
+                    messages.append({"role": "system", "content": str(system_text)})
+                messages.append({"role": "user", "content": user_text})
+
+                runtime = OpenAILocalToolRuntime.from_options(normalized_options)
+                tool_defs = runtime.get_openai_tools()
+                debug_openai_tools = os.getenv("EVOSKILL_OPENAI_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+
+                max_tool_rounds = 24
+                completion = None
+                query_started = time.monotonic()
+                for round_idx in range(1, max_tool_rounds + 1):
+                    messages = self._compact_openai_messages(messages)
+                    round_started = time.monotonic()
                     if debug_openai_tools:
                         logger.info(
-                            "[OPENAI][TOOL_CALLS] round=%s count=%s names=%s",
+                            "[OPENAI][ROUND_START] round=%s/%s messages=%s model=%s",
                             round_idx,
-                            len(tool_calls),
-                            [tc.function.name for tc in tool_calls],
+                            max_tool_rounds,
+                            len(messages),
+                            model_name,
                         )
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": msg.content or "",
-                            "tool_calls": [
-                                {
-                                    "id": tc.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tc.function.name,
-                                        "arguments": tc.function.arguments,
-                                    },
-                                }
-                                for tc in tool_calls
-                            ],
-                        }
+                    completion = await client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        tools=tool_defs if tool_defs else None,
+                        tool_choice="auto" if tool_defs else None,
                     )
-
-                    for tc in tool_calls:
-                        tool_started = time.monotonic()
-                        tool_output = await runtime.execute(
-                            tc.function.name, tc.function.arguments
+                    if debug_openai_tools:
+                        logger.info(
+                            "[OPENAI][ROUND_DONE] round=%s latency=%.2fs",
+                            round_idx,
+                            time.monotonic() - round_started,
                         )
+                    choice = completion.choices[0] if completion.choices else None
+                    msg = choice.message if choice else None
+                    tool_calls = getattr(msg, "tool_calls", None) if msg else None
+                    if not msg:
+                        break
+
+                    if tool_calls:
                         if debug_openai_tools:
                             logger.info(
-                                "[OPENAI][TOOL_DONE] round=%s name=%s latency=%.2fs output_chars=%s",
+                                "[OPENAI][TOOL_CALLS] round=%s count=%s names=%s",
                                 round_idx,
-                                tc.function.name,
-                                time.monotonic() - tool_started,
-                                len(tool_output),
+                                len(tool_calls),
+                                [tc.function.name for tc in tool_calls],
                             )
                         messages.append(
                             {
-                                "role": "tool",
-                                "tool_call_id": tc.id,
-                                "name": tc.function.name,
-                                "content": tool_output,
+                                "role": "assistant",
+                                "content": msg.content or "",
+                                "tool_calls": [
+                                    {
+                                        "id": tc.id,
+                                        "type": "function",
+                                        "function": {
+                                            "name": tc.function.name,
+                                            "arguments": tc.function.arguments,
+                                        },
+                                    }
+                                    for tc in tool_calls
+                                ],
                             }
                         )
-                    continue
 
-                break
+                        for tc in tool_calls:
+                            tool_started = time.monotonic()
+                            tool_output = await runtime.execute(
+                                tc.function.name, tc.function.arguments
+                            )
+                            if debug_openai_tools:
+                                logger.info(
+                                    "[OPENAI][TOOL_DONE] round=%s name=%s latency=%.2fs output_chars=%s",
+                                    round_idx,
+                                    tc.function.name,
+                                    time.monotonic() - tool_started,
+                                    len(tool_output),
+                                )
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "name": tc.function.name,
+                                    "content": tool_output,
+                                }
+                            )
+                        continue
 
-            if completion is None:
-                raise RuntimeError("OpenAI completion failed to return a response")
-            if debug_openai_tools:
-                logger.info(
-                    "[OPENAI][QUERY_DONE] total_latency=%.2fs rounds=%s",
-                    time.monotonic() - query_started,
-                    round_idx,
-                )
+                    break
 
-            return [completion]
+                if completion is None:
+                    raise RuntimeError("OpenAI completion failed to return a response")
+                if debug_openai_tools:
+                    logger.info(
+                        "[OPENAI][QUERY_DONE] total_latency=%.2fs rounds=%s",
+                        time.monotonic() - query_started,
+                        round_idx,
+                    )
+
+                return [completion]
+            finally:
+                await client.close()
 
     async def _run_with_retry(self, query: str) -> list[Any]:
         """Execute query with timeout and exponential backoff retry."""

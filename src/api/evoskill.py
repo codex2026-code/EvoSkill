@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
-from copy import deepcopy
+from copy import copy
 from pathlib import Path
 from typing import Callable, Any
 
@@ -108,7 +108,23 @@ class EvoSkill:
 
     def _clone_options_with_cwd(self, options: Any, cwd: Path) -> Any:
         """Clone an options object and retarget its cwd when supported."""
-        cloned = deepcopy(options)
+        if callable(options):
+            def wrapped() -> Any:
+                resolved = options()
+                if hasattr(resolved, "model_copy"):
+                    cloned = resolved.model_copy(deep=False)
+                else:
+                    cloned = copy(resolved)
+                if hasattr(cloned, "cwd"):
+                    cloned.cwd = str(cwd)
+                return cloned
+
+            return wrapped
+
+        if hasattr(options, "model_copy"):
+            cloned = options.model_copy(deep=False)
+        else:
+            cloned = copy(options)
         if hasattr(cloned, "cwd"):
             cloned.cwd = str(cwd)
         return cloned

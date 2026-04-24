@@ -206,7 +206,7 @@ async def main():
     else:
         print("Cache disabled")
 
-    results = await evaluate_full(
+    await evaluate_full(
         agent=agent,
         items=items,
         output_path=args.output,

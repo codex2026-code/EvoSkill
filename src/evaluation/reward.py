@@ -8,7 +8,16 @@ score = score_answer(ground_truth, predicted, tolerance)
 
 import re
 
-def normalize_text(text: str) -> str:
+def _coerce_text(value: object) -> str:
+    """Convert arbitrary values to text while handling None/NaN safely."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value != value:  # NaN check
+        return ""
+    return str(value)
+
+
+def normalize_text(text: object) -> str:
     """
     Normalize text for consistent parsing.
 
@@ -18,17 +27,18 @@ def normalize_text(text: str) -> str:
     Raises:
         ValueError: If text is None or empty
     """
-    if not text:
+    text_value = _coerce_text(text)
+    if not text_value:
         raise ValueError("Cannot normalize empty or None text")
 
     # Normalize Unicode minus to ASCII hyphen
-    normalized = text.replace('\u2212', '-')
+    normalized = text_value.replace('\u2212', '-')
     normalized = normalized.replace('−', '-')
 
     return normalized
 
 
-def extract_numbers_with_context(text: str) -> list[tuple[float, str, bool, bool]]:
+def extract_numbers_with_context(text: object) -> list[tuple[float, str, bool, bool]]:
     """
     Extract numbers with surrounding context for unit detection.
 
@@ -37,11 +47,12 @@ def extract_numbers_with_context(text: str) -> list[tuple[float, str, bool, bool
     Raises:
         ValueError: If text parsing fails unexpectedly
     """
-    if not text:
+    text_value = _coerce_text(text)
+    if not text_value:
         raise ValueError("Cannot extract numbers from empty text")
 
     # Normalize text first
-    text = normalize_text(text)
+    text = normalize_text(text_value)
 
     # Remove commas from numbers
     text_no_commas = text.replace(',', '')
@@ -262,7 +273,7 @@ def extract_final_answer(text: str) -> str:
     return text
 
 
-def fuzzy_match_answer(ground_truth: str, predicted: str, tolerance: float = 0.05) -> tuple[bool, str]:
+def fuzzy_match_answer(ground_truth: object, predicted: object, tolerance: float = 0.05) -> tuple[bool, str]:
     """
     Fuzzy match predicted answer against ground truth with robust handling.
 
@@ -277,6 +288,9 @@ def fuzzy_match_answer(ground_truth: str, predicted: str, tolerance: float = 0.0
     Raises:
         ValueError: On any parsing or validation error
     """
+    ground_truth = _coerce_text(ground_truth)
+    predicted = _coerce_text(predicted)
+
     if not ground_truth:
         raise ValueError("Ground truth cannot be empty")
     if not predicted:
@@ -436,7 +450,7 @@ def fuzzy_match_answer(ground_truth: str, predicted: str, tolerance: float = 0.0
     # No match
     return False, f"No match found. GT: '{ground_truth[:100]}', Pred: '{predicted[:100]}'"
 
-def score_answer(ground_truth: str, predicted: str, tolerance: float = 0.00) -> float:
+def score_answer(ground_truth: object, predicted: object, tolerance: float = 0.00) -> float:
     """
     Score the answer using robust fuzzy matching.
     """

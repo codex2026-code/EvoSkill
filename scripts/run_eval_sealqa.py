@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -82,6 +83,33 @@ async def main():
         help="Cache directory (default: .cache/runs)",
     )
     parser.add_argument(
+        "--cache-detailed-logs",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Store full trace messages plus diagnostics in cache json for SealQA "
+            "postmortem analysis (default: enabled)."
+        ),
+    )
+    parser.add_argument(
+        "--runtime-trace",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable runtime external-interaction trace JSONL logging (default: enabled).",
+    )
+    parser.add_argument(
+        "--runtime-trace-dir",
+        type=Path,
+        default=Path(".cache/runs/runtime_traces/sealqa"),
+        help="Directory for runtime trace JSONL files.",
+    )
+    parser.add_argument(
+        "--runtime-trace-file",
+        type=Path,
+        default=None,
+        help="Optional explicit runtime trace file path. Overrides --runtime-trace-dir.",
+    )
+    parser.add_argument(
         "--sdk",
         type=str,
         choices=["claude", "opencode", "openai"],
@@ -153,6 +181,19 @@ async def main():
 
     # Set SDK
     set_sdk(args.sdk)
+    if args.runtime_trace:
+        runtime_trace_path = args.runtime_trace_file
+        if runtime_trace_path is None:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            runtime_trace_path = args.runtime_trace_dir / f"{stamp}_pid{os.getpid()}.jsonl"
+        runtime_trace_path.parent.mkdir(parents=True, exist_ok=True)
+        os.environ["EVOSKILL_RUNTIME_TRACE_ENABLED"] = "1"
+        os.environ["EVOSKILL_RUNTIME_TRACE_FILE"] = str(runtime_trace_path.resolve())
+        print(f"Runtime trace: enabled -> {runtime_trace_path}")
+    else:
+        os.environ["EVOSKILL_RUNTIME_TRACE_ENABLED"] = "0"
+        os.environ.pop("EVOSKILL_RUNTIME_TRACE_FILE", None)
+        print("Runtime trace: disabled")
 
     effective_openai_base_url = (os.getenv("OPENAI_BASE_URL") or "").strip() or None
     effective_openai_api_key = (os.getenv("OPENAI_API_KEY") or "").strip() or None
@@ -201,8 +242,15 @@ async def main():
 
     cache = None
     if not args.no_cache:
-        cache = RunCache(CacheConfig(cache_dir=args.cache_dir))
+        cache = RunCache(
+            CacheConfig(
+                cache_dir=args.cache_dir,
+                store_messages=args.cache_detailed_logs,
+                include_trace_diagnostics=args.cache_detailed_logs,
+            )
+        )
         print(f"Cache enabled: {args.cache_dir}")
+        print(f"Cache detailed logs: {'enabled' if args.cache_detailed_logs else 'disabled'}")
     else:
         print("Cache disabled")
 

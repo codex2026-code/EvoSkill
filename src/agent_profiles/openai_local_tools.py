@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from src.runtime_trace import append_runtime_trace
+
 
 def _safe_json_dump(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False)
@@ -248,38 +250,89 @@ class OpenAILocalToolRuntime:
         raise PermissionError(f"Path is outside allowed roots: {raw}")
 
     async def execute(self, tool_name: str, raw_args: str) -> str:
+        append_runtime_trace(
+            "tool_call.start",
+            {
+                "tool_name": tool_name,
+                "args_raw_preview": (raw_args or "")[:800],
+            },
+        )
         if tool_name not in self.allowed_tools:
-            return _safe_json_dump({"ok": False, "error": f"Tool not allowed: {tool_name}"})
+            response = _safe_json_dump({"ok": False, "error": f"Tool not allowed: {tool_name}"})
+            append_runtime_trace(
+                "tool_call.end",
+                {
+                    "tool_name": tool_name,
+                    "ok": False,
+                    "output_preview": response[:800],
+                    "output_chars": len(response),
+                },
+            )
+            return response
 
         try:
             args = json.loads(raw_args) if raw_args else {}
         except json.JSONDecodeError as e:
-            return _safe_json_dump({"ok": False, "error": f"Invalid tool arguments: {e}"})
+            response = _safe_json_dump({"ok": False, "error": f"Invalid tool arguments: {e}"})
+            append_runtime_trace(
+                "tool_call.end",
+                {
+                    "tool_name": tool_name,
+                    "ok": False,
+                    "output_preview": response[:800],
+                    "output_chars": len(response),
+                },
+            )
+            return response
 
         try:
             if tool_name == "Read":
-                return self._tool_read(args)
-            if tool_name == "Write":
-                return self._tool_write(args)
-            if tool_name == "Edit":
-                return self._tool_edit(args)
-            if tool_name == "Glob":
-                return self._tool_glob(args)
-            if tool_name == "Grep":
-                return self._tool_grep(args)
-            if tool_name in ("Bash", "BashOutput"):
-                return await self._tool_bash(args)
-            if tool_name == "TodoWrite":
-                return self._tool_todo_write(args)
-            if tool_name == "Skill":
-                return self._tool_skill(args)
-            if tool_name == "WebFetch":
-                return await self._tool_webfetch(args)
-            if tool_name == "WebSearch":
-                return await self._tool_websearch(args)
-            return _safe_json_dump({"ok": False, "error": f"Unsupported tool: {tool_name}"})
+                response = self._tool_read(args)
+            elif tool_name == "Write":
+                response = self._tool_write(args)
+            elif tool_name == "Edit":
+                response = self._tool_edit(args)
+            elif tool_name == "Glob":
+                response = self._tool_glob(args)
+            elif tool_name == "Grep":
+                response = self._tool_grep(args)
+            elif tool_name in ("Bash", "BashOutput"):
+                response = await self._tool_bash(args)
+            elif tool_name == "TodoWrite":
+                response = self._tool_todo_write(args)
+            elif tool_name == "Skill":
+                response = self._tool_skill(args)
+            elif tool_name == "WebFetch":
+                response = await self._tool_webfetch(args)
+            elif tool_name == "WebSearch":
+                response = await self._tool_websearch(args)
+            else:
+                response = _safe_json_dump(
+                    {"ok": False, "error": f"Unsupported tool: {tool_name}"}
+                )
+            append_runtime_trace(
+                "tool_call.end",
+                {
+                    "tool_name": tool_name,
+                    "ok": True,
+                    "output_preview": response[:800],
+                    "output_chars": len(response),
+                },
+            )
+            return response
         except Exception as e:
-            return _safe_json_dump({"ok": False, "error": f"{type(e).__name__}: {e}"})
+            response = _safe_json_dump({"ok": False, "error": f"{type(e).__name__}: {e}"})
+            append_runtime_trace(
+                "tool_call.end",
+                {
+                    "tool_name": tool_name,
+                    "ok": False,
+                    "output_preview": response[:800],
+                    "output_chars": len(response),
+                    "exception": f"{type(e).__name__}: {e}",
+                },
+            )
+            return response
 
     def _tool_read(self, args: dict[str, Any]) -> str:
         path = self._resolve_path(args["path"])

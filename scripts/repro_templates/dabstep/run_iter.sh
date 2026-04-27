@@ -17,6 +17,8 @@ AGG_CSV="$EXP_ROOT/$RUN_TAG/summary/all_runs.csv"
 CLEAN_BEFORE_RUN=${CLEAN_BEFORE_RUN:-1}
 CACHE_DIR=${CACHE_DIR:-.cache/runs}
 ARTIFACTS_DIR=${ARTIFACTS_DIR:-artifacts/dabstep}
+RUNTIME_TRACE_DIR=${RUNTIME_TRACE_DIR:-$CACHE_DIR/runtime_traces/dabstep}
+RUNTIME_TRACE_FILE=${RUNTIME_TRACE_FILE:-$RUNTIME_TRACE_DIR/${RUN_TAG}_iter_runtime.jsonl}
 
 cleanup_previous_outputs() {
   [[ "$CLEAN_BEFORE_RUN" == "1" ]] || return 0
@@ -35,6 +37,10 @@ cleanup_previous_outputs() {
 cleanup_previous_outputs
 
 mkdir -p "$TASK_DIR/eval" "$SKILLS_DIR"
+mkdir -p "$RUNTIME_TRACE_DIR"
+export EVOSKILL_RUNTIME_TRACE_ENABLED=${EVOSKILL_RUNTIME_TRACE_ENABLED:-1}
+export EVOSKILL_RUNTIME_TRACE_FILE="$RUNTIME_TRACE_FILE"
+echo "Runtime trace: EVOSKILL_RUNTIME_TRACE_ENABLED=$EVOSKILL_RUNTIME_TRACE_ENABLED, file=$EVOSKILL_RUNTIME_TRACE_FILE"
 
 # Optional memory guard for iterative DabStep workflow.
 # Disabled by default to preserve original behavior unless explicitly enabled.

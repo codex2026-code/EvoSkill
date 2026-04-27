@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Generic, Optional, Type, TypeVa
 from pydantic import BaseModel, ValidationError
 
 from .openai_local_tools import OpenAILocalToolRuntime
+from ..runtime_trace import append_runtime_trace
 from .sdk_config import is_claude_sdk, is_openai_sdk
 
 logger = logging.getLogger(__name__)
@@ -399,6 +400,7 @@ class Agent(Generic[T]):
                 max_tool_rounds = 24
                 completion = None
                 query_started = time.monotonic()
+                exhausted_with_pending_tool_calls = False
                 for round_idx in range(1, max_tool_rounds + 1):
                     messages = self._compact_openai_messages(messages)
                     round_started = time.monotonic()
@@ -416,6 +418,17 @@ class Agent(Generic[T]):
                         tools=tool_defs if tool_defs else None,
                         tool_choice="auto" if tool_defs else None,
                     )
+                    append_runtime_trace(
+                        "openai.completion",
+                        {
+                            "round": round_idx,
+                            "max_rounds": max_tool_rounds,
+                            "model": model_name,
+                            "message_count": len(messages),
+                            "tool_defs_count": len(tool_defs),
+                            "has_choices": bool(completion.choices),
+                        },
+                    )
                     if debug_openai_tools:
                         logger.info(
                             "[OPENAI][ROUND_DONE] round=%s latency=%.2fs",
@@ -429,6 +442,14 @@ class Agent(Generic[T]):
                         break
 
                     if tool_calls:
+                        append_runtime_trace(
+                            "openai.tool_calls",
+                            {
+                                "round": round_idx,
+                                "tool_call_count": len(tool_calls),
+                                "tool_names": [tc.function.name for tc in tool_calls],
+                            },
+                        )
                         if debug_openai_tools:
                             logger.info(
                                 "[OPENAI][TOOL_CALLS] round=%s count=%s names=%s",
@@ -475,12 +496,34 @@ class Agent(Generic[T]):
                                     "content": tool_output,
                                 }
                             )
+                        if round_idx == max_tool_rounds:
+                            exhausted_with_pending_tool_calls = True
                         continue
 
                     break
 
                 if completion is None:
                     raise RuntimeError("OpenAI completion failed to return a response")
+                if exhausted_with_pending_tool_calls:
+                    if debug_openai_tools:
+                        logger.warning(
+                            "[OPENAI][TOOL_LIMIT] hit max rounds=%s; requesting final non-tool answer",
+                            max_tool_rounds,
+                        )
+                    completion = await client.chat.completions.create(
+                        model=model_name,
+                        messages=self._compact_openai_messages(messages),
+                        tools=None,
+                        tool_choice="none",
+                    )
+                    append_runtime_trace(
+                        "openai.completion.forced_final",
+                        {
+                            "model": model_name,
+                            "message_count": len(messages),
+                            "reason": "max_tool_rounds_exhausted",
+                        },
+                    )
                 if debug_openai_tools:
                     logger.info(
                         "[OPENAI][QUERY_DONE] total_latency=%.2fs rounds=%s",
@@ -652,20 +695,42 @@ class Agent(Generic[T]):
             choice = completion.choices[0] if completion.choices else None
             message = choice.message if choice else None
             content = message.content if message else ""
-            result_text = content if isinstance(content, str) else str(content)
+            if isinstance(content, str):
+                result_text = content
+            elif content is None:
+                result_text = ""
+            else:
+                result_text = json.dumps(content, ensure_ascii=False)
 
             output = None
             parse_error = None
             raw_structured_output = None
 
-            if result_text:
+            normalized_result = result_text.strip()
+            append_runtime_trace(
+                "openai.parse_attempt",
+                {
+                    "result_chars": len(result_text),
+                    "normalized_chars": len(normalized_result),
+                    "normalized_preview": normalized_result[:240],
+                },
+            )
+            if normalized_result and normalized_result.lower() not in {"none", "null"}:
                 try:
-                    raw_structured_output = self._safe_json_loads(result_text)
+                    raw_structured_output = self._safe_json_loads(normalized_result)
                     output = self.response_model.model_validate(raw_structured_output)
                 except (ValidationError, json.JSONDecodeError, TypeError) as e:
                     parse_error = f"{type(e).__name__}: {str(e)}"
             else:
                 parse_error = "No content returned from OpenAI API"
+            if parse_error:
+                append_runtime_trace(
+                    "openai.parse_error",
+                    {
+                        "parse_error": parse_error,
+                        "result_preview": normalized_result[:240],
+                    },
+                )
 
             options = self._normalize_options_for_openai(self._get_options())
             model_name = options.get("model_id") or os.getenv("OPENAI_MODEL") or "unknown"

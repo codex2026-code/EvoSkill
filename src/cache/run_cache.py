@@ -32,6 +32,7 @@ class CacheConfig(BaseModel):
     cache_dir: Path = Path(".cache/runs")
     enabled: bool = True
     store_messages: bool = False  # Whether to cache the full messages list
+    include_trace_diagnostics: bool = False  # Add lightweight trace diagnostics block
     hash_length: int = 12  # Length of hash prefix for filenames
     cwd: Path = Path(".")  # Working directory for git commands
 
@@ -47,6 +48,7 @@ class CacheEntry(BaseModel):
 
     cache_key: dict[str, str]  # tree_hash, question_hash, question
     trace: dict[str, Any]  # Serialized AgentTrace
+    diagnostics: dict[str, Any] | None = None
 
 
 class RunCache:
@@ -66,6 +68,28 @@ class RunCache:
             trace = await agent.run(question)
             cache.set(question, trace)
     """
+
+    @staticmethod
+    def _build_trace_diagnostics(trace: AgentTrace[Any]) -> dict[str, Any]:
+        """Build a compact diagnostics block for easier cache-side debugging."""
+        result_text = str(trace.result) if trace.result is not None else ""
+        result_preview = result_text.strip().replace("\n", " ")
+        if len(result_preview) > 240:
+            result_preview = result_preview[:240] + "..."
+
+        return {
+            "is_error": bool(trace.is_error),
+            "parse_error": trace.parse_error,
+            "has_output": trace.output is not None,
+            "output_model": type(trace.output).__name__ if trace.output is not None else None,
+            "result_chars": len(result_text),
+            "result_preview": result_preview,
+            "message_count": len(trace.messages) if trace.messages else 0,
+            "tool_count": len(trace.tools) if trace.tools else 0,
+            "model": trace.model,
+            "session_id": trace.session_id,
+            "uuid": trace.uuid,
+        }
 
     def __init__(self, config: CacheConfig | None = None):
         """
@@ -256,6 +280,11 @@ class RunCache:
                 "question": question,
             },
             trace=trace_dict,
+            diagnostics=(
+                self._build_trace_diagnostics(trace)
+                if self.config.include_trace_diagnostics
+                else None
+            ),
         )
 
         # Write atomically (write to temp, then rename)
